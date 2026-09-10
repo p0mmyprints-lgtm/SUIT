@@ -7,7 +7,6 @@ import subprocess
 import threading
 import json
 import time
-from datetime import datetime
 from modules.utils import ServiceUtils
 
 class KioskView(ctk.CTkFrame):
@@ -18,136 +17,201 @@ class KioskView(ctk.CTkFrame):
         self.project_dir = Path(controller.project_dir)
         self.learn_win = None
         self.is_updating = False
-        
+
         # Paths
         self.autostart_dir = Path.home() / ".config/autostart"
-        self.ch_desktop = self.autostart_dir / "suit-chromium.desktop"
-        
+        self.ch_desktop = self.autostart_dir / "pommypc-chromium.desktop"
+
         self.killswitch_file = self.project_dir / "scripts/killswitch.py"
-        self.ks_service_file = Path("/etc/systemd/system/suit-killswitch.service")
-        self.config_file = Path.home() / ".suit_killswitch_config"
-        
-        # --- HEADER ---
+        self.ks_service_file = Path("/etc/systemd/system/pommypc-killswitch.service")
+        self.config_file = Path.home() / ".pommypc_killswitch_config"
+
+        # Camera stream URLs
+        self.camera_urls = [
+            "http://localhost:3180/api/streams/cams/0",
+            "http://localhost:3180/api/streams/cams/1",
+            "http://localhost:3180/api/streams/cams/2",
+        ]
+
+        # ===================== HEADER =====================
         self.header = ctk.CTkFrame(self, fg_color="transparent")
-        self.header.pack(fill="x", pady=(10, 25))
-        
-        # Back Button (Forced Icon)
+        self.header.pack(fill="x", pady=(10, 20))
+
         self.btn_back = ctk.CTkButton(self.header, text="←", width=50, height=35,
-                                     fg_color=self.colors["card"], 
-                                     border_color=self.colors["header"],
-                                     border_width=1,
-                                     text_color="white", command=controller.show_menu)
+                                      fg_color=self.colors["card"],
+                                      border_color=self.colors["header"],
+                                      border_width=1,
+                                      text_color="white", command=controller.show_menu)
         self.btn_back.pack(side="left", padx=20)
-        
-        # Title
-        self.lbl_title = ctk.CTkLabel(self.header, text="", font=("Roboto", 28, "bold"), text_color="white")
+
+        self.lbl_title = ctk.CTkLabel(self.header, text="Kiosk & Camera Setup",
+                                      font=("Roboto", 28, "bold"), text_color="white")
         self.lbl_title.pack(side="left", padx=10)
 
-        # --- INFO CARD (Minimalist) ---
-        self.info_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.info_frame.pack(fill="x", padx=20, pady=(0, 20))
-        self.lbl_info = ctk.CTkLabel(self.info_frame, text="", font=("Roboto", 14),
-                                    text_color=self.colors["fg_dim"], wraplength=720, justify="left")
+        # ===================== INFO =====================
+        info_frame = ctk.CTkFrame(self, fg_color="transparent")
+        info_frame.pack(fill="x", padx=20, pady=(0, 15))
+        self.lbl_info = ctk.CTkLabel(info_frame,
+                                     text="Configure the Autodarts kiosk browser, on-screen keyboard, kill-switch, and camera focus.",
+                                     font=("Roboto", 14), text_color=self.colors["fg_dim"],
+                                     wraplength=720, justify="left")
         self.lbl_info.pack(fill="x", padx=20)
 
-        # --- URL ENTRY ---
-        self.url_container = ctk.CTkFrame(self, fg_color="transparent")
-        self.url_container.pack(fill="x", pady=(10, 25), padx=40)
-        self.lbl_url = ctk.CTkLabel(self.url_container, text="", font=("Roboto", 13, "bold"), text_color=self.colors["fg_dim"])
-        self.lbl_url.pack(anchor="w", padx=5)
-        self.url_ent = ctk.CTkEntry(self.url_container, font=("Roboto", 16), height=50, 
-                                   corner_radius=10, border_color=self.colors["header"],
-                                   fg_color=self.colors["bg"], text_color="white")
+        # ===================== URL ENTRY =====================
+        url_container = ctk.CTkFrame(self, fg_color="transparent")
+        url_container.pack(fill="x", pady=(5, 20), padx=40)
+        ctk.CTkLabel(url_container, text="Kiosk URL", font=("Roboto", 13, "bold"),
+                     text_color=self.colors["fg_dim"]).pack(anchor="w", padx=5)
+        self.url_ent = ctk.CTkEntry(url_container, font=("Roboto", 16), height=50,
+                                    corner_radius=10, border_color=self.colors["header"],
+                                    fg_color=self.colors["bg"], text_color="white")
         self.url_ent.insert(0, "https://play.autodarts.io/")
         self.url_ent.pack(fill="x", pady=8)
 
-        # --- BROWSER SECTION ---
-        self.main_browser_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.main_browser_frame.pack(fill="x", padx=40)
+        # ===================== BROWSER SECTION =====================
+        browser_frame = ctk.CTkFrame(self, fg_color="transparent")
+        browser_frame.pack(fill="x", padx=40)
 
-        # CHROMIUM BOX
-        self.ch_box = ctk.CTkFrame(self.main_browser_frame, fg_color=self.colors["card"], corner_radius=12,
-                                  border_width=1, border_color=self.colors["header"])
-        self.ch_box.pack(fill="x", pady=(0, 15))
-        self.lbl_ch_title = ctk.CTkLabel(self.ch_box, text="", font=("Roboto", 15, "bold"), text_color=self.colors["accent"])
-        self.lbl_ch_title.pack(pady=(12, 5))
-        
-        ch_btn_frame = ctk.CTkFrame(self.ch_box, fg_color="transparent")
+        ch_box = ctk.CTkFrame(browser_frame, fg_color=self.colors["card"], corner_radius=12,
+                              border_width=1, border_color=self.colors["header"])
+        ch_box.pack(fill="x", pady=(0, 15))
+
+        ctk.CTkLabel(ch_box, text="Chromium Kiosk", font=("Roboto", 15, "bold"),
+                     text_color=self.colors["accent"]).pack(pady=(12, 5))
+
+        ch_btn_frame = ctk.CTkFrame(ch_box, fg_color="transparent")
         ch_btn_frame.pack(fill="x", padx=15, pady=(5, 15))
 
         self.btn_auto_ch = ctk.CTkButton(ch_btn_frame, text="", height=50, corner_radius=8,
+                                         text_color="white", text_color_disabled="white",
+                                         font=("Roboto", 14, "bold"),
+                                         command=lambda: self.toggle_autostart("Chromium"))
+        self.btn_auto_ch.pack(side="left", expand=True, fill="x", padx=5)
+
+        self.btn_now_ch = ctk.CTkButton(ch_btn_frame, text="Launch Now", height=50, corner_radius=8,
+                                        fg_color=self.colors["accent"],
+                                        hover_color="#15803d",
                                         text_color="white", text_color_disabled="white",
                                         font=("Roboto", 14, "bold"),
-                                        command=lambda: self.toggle_autostart("Chromium"))
-        self.btn_auto_ch.pack(side="left", expand=True, fill="x", padx=5)
-        
-        self.btn_now_ch = ctk.CTkButton(ch_btn_frame, text="", height=50, corner_radius=8,
-                                       text_color="white", text_color_disabled="white",
-                                       font=("Roboto", 14, "bold"), 
-                                       command=lambda: self.launch_now("Chromium"))
+                                        command=lambda: self.launch_now("Chromium"))
         self.btn_now_ch.pack(side="left", expand=True, fill="x", padx=5)
 
-        # --- ON-SCREEN KEYBOARD (OSK) ---
-        self.osk_container = ctk.CTkFrame(self, fg_color=self.colors["card"], corner_radius=12,
-                                         border_width=1, border_color=self.colors["header"])
-        self.osk_container.pack(fill="x", padx=40, pady=(15, 8))
-        
-        self.lbl_osk_title = ctk.CTkLabel(self.osk_container, text="", font=("Roboto", 14, "bold"), text_color="white")
-        self.lbl_osk_title.pack(side="left", padx=20, pady=12)
+        # ===================== CAMERA FOCUS =====================
+        cam_box = ctk.CTkFrame(self, fg_color=self.colors["card"], corner_radius=12,
+                               border_width=1, border_color=self.colors["header"])
+        cam_box.pack(fill="x", padx=40, pady=(0, 15))
 
-        self.btn_toggle_osk = ctk.CTkButton(self.osk_container, text="", width=130, height=38, corner_radius=8,
-                                          text_color="white", text_color_disabled="white",
-                                          font=("Roboto", 13, "bold"),
-                                          command=self.toggle_osk)
+        ctk.CTkLabel(cam_box, text="📷  Camera Focus", font=("Roboto", 15, "bold"),
+                     text_color=self.colors["accent"]).pack(pady=(12, 5))
+
+        ctk.CTkLabel(cam_box, text="Open a live preview for each camera to check and adjust focus.",
+                     font=("Roboto", 12), text_color=self.colors["fg_dim"]).pack(pady=(0, 10))
+
+        cam_btn_frame = ctk.CTkFrame(cam_box, fg_color="transparent")
+        cam_btn_frame.pack(fill="x", padx=15, pady=(0, 15))
+
+        for i, url in enumerate(self.camera_urls):
+            btn = ctk.CTkButton(cam_btn_frame, text=f"Camera {i + 1}", height=50, corner_radius=8,
+                                fg_color=self.colors["header"],
+                                hover_color=self.colors["accent"],
+                                text_color="white", font=("Roboto", 14, "bold"),
+                                command=lambda u=url: self.open_camera(u))
+            btn.pack(side="left", expand=True, fill="x", padx=5)
+
+        # ===================== ON-SCREEN KEYBOARD =====================
+        osk_container = ctk.CTkFrame(self, fg_color=self.colors["card"], corner_radius=12,
+                                     border_width=1, border_color=self.colors["header"])
+        osk_container.pack(fill="x", padx=40, pady=(0, 12))
+
+        ctk.CTkLabel(osk_container, text="On-Screen Keyboard", font=("Roboto", 14, "bold"),
+                     text_color="white").pack(side="left", padx=20, pady=12)
+
+        self.btn_toggle_osk = ctk.CTkButton(osk_container, text="", width=130, height=38,
+                                            corner_radius=8,
+                                            text_color="white", text_color_disabled="white",
+                                            font=("Roboto", 13, "bold"),
+                                            command=self.toggle_osk)
         self.btn_toggle_osk.pack(side="right", padx=15)
 
-        # --- KILL-SWITCH ---
-        self.ks_container = ctk.CTkFrame(self, fg_color=self.colors["card"], corner_radius=12,
-                                        border_width=1, border_color=self.colors["header"])
-        self.ks_container.pack(fill="x", padx=40, pady=(8, 20))
-        
-        self.lbl_ks_title = ctk.CTkLabel(self.ks_container, text="", font=("Roboto", 14, "bold"), text_color="white")
-        self.lbl_ks_title.pack(pady=(12, 5))
+        # ===================== KILL-SWITCH =====================
+        ks_container = ctk.CTkFrame(self, fg_color=self.colors["card"], corner_radius=12,
+                                    border_width=1, border_color=self.colors["header"])
+        ks_container.pack(fill="x", padx=40, pady=(0, 20))
 
-        ks_inner = ctk.CTkFrame(self.ks_container, fg_color="transparent")
+        ctk.CTkLabel(ks_container, text="Kill-Switch", font=("Roboto", 14, "bold"),
+                     text_color="white").pack(pady=(12, 5))
+
+        ks_inner = ctk.CTkFrame(ks_container, fg_color="transparent")
         ks_inner.pack(fill="x", padx=15, pady=5)
 
-        self.btn_learn = ctk.CTkButton(ks_inner, text="", height=42, corner_radius=8,
-                                      text_color="white", text_color_disabled="white",
-                                      font=("Roboto", 13, "bold"),
-                                      command=self.start_learning_wrapper)
+        self.btn_learn = ctk.CTkButton(ks_inner, text="Learn Key", height=42, corner_radius=8,
+                                       fg_color=self.colors["accent"],
+                                       hover_color="#15803d",
+                                       text_color="white", text_color_disabled="white",
+                                       font=("Roboto", 13, "bold"),
+                                       command=self.start_learning_wrapper)
         self.btn_learn.pack(side="left", expand=True, fill="x", padx=(0, 10))
 
-        self.info_box = ctk.CTkFrame(ks_inner, fg_color=self.colors["bg"], height=42, corner_radius=8,
-                                    border_width=1, border_color=self.colors["header"])
+        self.info_box = ctk.CTkFrame(ks_inner, fg_color=self.colors["bg"], height=42,
+                                     corner_radius=8, border_width=1,
+                                     border_color=self.colors["header"])
         self.info_box.pack(side="left", expand=True, fill="both")
 
-        self.key_label = ctk.CTkLabel(self.info_box, text="", font=("Roboto", 12, "bold"), text_color=self.colors["success"])
+        self.key_label = ctk.CTkLabel(self.info_box, text="No key assigned",
+                                      font=("Roboto", 12, "bold"),
+                                      text_color=self.colors["fg_dim"])
         self.key_label.pack(expand=True)
 
-        self.btn_toggle_ks = ctk.CTkButton(self.ks_container, text="", height=50, corner_radius=10,
-                                          font=("Roboto", 15, "bold"), 
-                                          text_color="white", text_color_disabled="white", 
-                                          command=self.toggle_ks_service)
+        self.btn_toggle_ks = ctk.CTkButton(ks_container, text="", height=50, corner_radius=10,
+                                           font=("Roboto", 15, "bold"),
+                                           text_color="white", text_color_disabled="white",
+                                           command=self.toggle_ks_service)
         self.btn_toggle_ks.pack(fill="x", padx=15, pady=(10, 15))
 
-        self.update_texts()
+        self.update_status()
 
+    # ===================== CAMERA =====================
+    def open_camera(self, url):
+        """Open a camera stream in a regular (non-kiosk) Chromium window."""
+        cmd = f"chromium-browser --new-window '{url}' &"
+        subprocess.Popen(cmd, shell=True)
+
+    # ===================== BROWSER =====================
     def toggle_autostart(self, browser):
-        target_file = self.ch_desktop
-        if target_file.exists():
-            target_file.unlink()
+        if self.ch_desktop.exists():
+            self.ch_desktop.unlink()
         else:
-            if not self.autostart_dir.exists(): self.autostart_dir.mkdir(parents=True, exist_ok=True)
+            if not self.autostart_dir.exists():
+                self.autostart_dir.mkdir(parents=True, exist_ok=True)
             url = self.url_ent.get().strip()
             browser_cmd = f"chromium-browser --kiosk --password-store=basic {url}"
             cmd = f"bash -c 'sleep 3; {browser_cmd}'"
-            with open(target_file, "w") as f:
-                f.write(f"[Desktop Entry]\nType=Application\nName=SUIT-{browser}\nExec={cmd}\n")
+            with open(self.ch_desktop, "w") as f:
+                f.write(f"[Desktop Entry]\nType=Application\nName=PommyPC-Kiosk\nExec={cmd}\n")
         self.update_status()
 
+    def launch_now(self, browser):
+        url = self.url_ent.get().strip()
+        cmd = f"chromium-browser --kiosk --password-store=basic {url} &"
+        subprocess.Popen(cmd, shell=True)
+
+    # ===================== OSK =====================
+    def toggle_osk(self):
+        try:
+            res = subprocess.check_output(
+                ["gsettings", "get", "org.gnome.desktop.a11y.applications", "screen-keyboard-enabled"],
+                text=True).strip()
+            new_state = "false" if res == "true" else "true"
+            subprocess.run(["gsettings", "set", "org.gnome.desktop.a11y.applications",
+                            "screen-keyboard-enabled", new_state])
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not toggle OSK: {e}")
+        self.update_status()
+
+    # ===================== KILL-SWITCH =====================
     def stop_ks_quietly(self):
-        cmd = "systemctl stop suit-killswitch; systemctl disable suit-killswitch; rm -f /etc/systemd/system/suit-killswitch.service; systemctl daemon-reload"
+        cmd = (f"systemctl stop pommypc-killswitch; systemctl disable pommypc-killswitch; "
+               f"rm -f {self.ks_service_file}; systemctl daemon-reload")
         subprocess.run(ServiceUtils.sudo_cmd(cmd), shell=True, stderr=subprocess.DEVNULL)
 
     def start_learning_wrapper(self):
@@ -160,8 +224,6 @@ class KioskView(ctk.CTkFrame):
             self.learn_win.focus_set()
             return
 
-        l = getattr(self.controller, "lang", "en")
-        def txt(k): return self.controller.texts.get(k, {}).get(l, k)
         learn_script = self.project_dir / "scripts" / "tmp_learn.py"
         with open(learn_script, "w") as f:
             f.write(f"""
@@ -195,37 +257,47 @@ except Exception as e:
     print(f"ERROR:{{e}}", flush=True)
     sys.exit(1)
 """)
+
         self.learn_win = ctk.CTkToplevel(self)
-        self.learn_win.title(txt("ks_learn_title"))
+        self.learn_win.title("Learn Kill-Switch Key")
         self.learn_win.geometry("400x250")
-        self.learn_win.after(10, self.learn_win.focus_get)
         self.learn_win.transient(self)
-        ctk.CTkLabel(self.learn_win, text=txt("ks_learn_desc"), font=("Roboto", 14, "bold"), text_color="white").pack(pady=20)
-        self.lbl_count = ctk.CTkLabel(self.learn_win, text="0 / 5", font=("Roboto", 40, "bold"), text_color=self.colors["accent"])
+        ctk.CTkLabel(self.learn_win,
+                     text="Press your kill-switch key 5 times",
+                     font=("Roboto", 14, "bold"), text_color="white").pack(pady=20)
+        self.lbl_count = ctk.CTkLabel(self.learn_win, text="0 / 5",
+                                      font=("Roboto", 40, "bold"),
+                                      text_color=self.colors["accent"])
         self.lbl_count.pack(pady=10)
         threading.Thread(target=self.run_learn, args=(learn_script,), daemon=True).start()
 
     def run_learn(self, path):
-        proc = subprocess.Popen(ServiceUtils.sudo_cmd(f"{sys.executable} {path}"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, shell=True, bufsize=1)
+        proc = subprocess.Popen(ServiceUtils.sudo_cmd(f"{sys.executable} {path}"),
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, shell=True, bufsize=1)
         success = False
         old_ts = 0
         path = Path(path)
-        if self.config_file.exists(): old_ts = self.config_file.stat().st_mtime
+        if self.config_file.exists():
+            old_ts = self.config_file.stat().st_mtime
         try:
             while True:
                 line = proc.stdout.readline()
-                if not line: break
+                if not line:
+                    break
                 line = line.strip()
                 if "FEEDBACK:" in line:
                     try:
                         c = line.split(":")[1].strip()
                         self.after(0, lambda val=c: self.lbl_count.configure(text=f"{val} / 5"))
-                    except: pass
+                    except:
+                        pass
                 if "SUCCESS" in line:
                     success = True
                     break
-        except: pass
-        
+        except:
+            pass
+
         def cleanup_window():
             if self.learn_win is not None:
                 self.learn_win.destroy()
@@ -235,61 +307,81 @@ except Exception as e:
         try:
             proc.terminate()
             proc.wait(timeout=1)
-        except: pass
-        if proc.returncode == 0 or (self.config_file.exists() and self.config_file.stat().st_mtime > old_ts): success = True
+        except:
+            pass
+        if proc.returncode == 0 or (self.config_file.exists() and
+                                     self.config_file.stat().st_mtime > old_ts):
+            success = True
         if path.exists():
-            try: path.unlink()
-            except: pass
-        if success: self.after(100, self.auto_enable_ks)
-        else: self.after(100, self.update_status)
+            try:
+                path.unlink()
+            except:
+                pass
+        if success:
+            self.after(100, self.auto_enable_ks)
+        else:
+            self.after(100, self.update_status)
 
-    def auto_enable_ks(self): self.toggle_ks_service(force_enable=True)
+    def auto_enable_ks(self):
+        self.toggle_ks_service(force_enable=True)
 
     def toggle_ks_service(self, force_enable=False):
-        l = getattr(self.controller, "lang", "en")
-        def txt(k): return self.controller.texts.get(k, {}).get(l, k)
-        status = ServiceUtils.check_status("suit-killswitch")
+        status = ServiceUtils.check_status("pommypc-killswitch")
         is_installed = (status == "running" or status == "stopped")
         if force_enable or not is_installed:
             if not self.config_file.exists():
-                messagebox.showwarning("SUIT", txt("ks_msg_learn_first"))
+                messagebox.showwarning("Pommy PC", "Please learn a kill-switch key first.")
                 return
             python_exe = sys.executable
-            svc_content = f"""[Unit]\nDescription=SUIT Kill-Switch\nAfter=multi-user.target\n\n[Service]\nType=simple\nExecStart={python_exe} {self.killswitch_file} {self.config_file}\nRestart=always\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=multi-user.target\n"""
-            temp_svc = Path.home() / "suit-killswitch.service"
+            svc_content = (
+                f"[Unit]\nDescription=Pommy PC Kill-Switch\nAfter=multi-user.target\n\n"
+                f"[Service]\nType=simple\n"
+                f"ExecStart={python_exe} {self.killswitch_file} {self.config_file}\n"
+                f"Restart=always\nStandardOutput=journal\nStandardError=journal\n\n"
+                f"[Install]\nWantedBy=multi-user.target\n"
+            )
+            temp_svc = Path.home() / "pommypc-killswitch.service"
             try:
-                with open(temp_svc, "w") as f: f.write(svc_content)
-                cmd = ServiceUtils.sudo_cmd(f"mv {temp_svc} {self.ks_service_file} && systemctl daemon-reload && systemctl enable suit-killswitch && systemctl start suit-killswitch")
-                ServiceUtils.run_bash_script(self, cmd, "Kill-Switch Activation", on_close=self.update_status)
-            except Exception as e: messagebox.showerror("Error", f"Service could not be created: {e}")
+                with open(temp_svc, "w") as f:
+                    f.write(svc_content)
+                cmd = ServiceUtils.sudo_cmd(
+                    f"mv {temp_svc} {self.ks_service_file} && systemctl daemon-reload && "
+                    f"systemctl enable pommypc-killswitch && systemctl start pommypc-killswitch"
+                )
+                ServiceUtils.run_bash_script(self, cmd, "Kill-Switch Activation",
+                                             on_close=self.update_status)
+            except Exception as e:
+                messagebox.showerror("Error", f"Service could not be created: {e}")
         else:
-            cmd = ServiceUtils.sudo_cmd(f"systemctl stop suit-killswitch; systemctl disable suit-killswitch; rm -f {self.ks_service_file}; systemctl daemon-reload")
-            ServiceUtils.run_bash_script(self, cmd, "Kill-Switch Deactivation", on_close=self.update_status)
+            cmd = ServiceUtils.sudo_cmd(
+                f"systemctl stop pommypc-killswitch; systemctl disable pommypc-killswitch; "
+                f"rm -f {self.ks_service_file}; systemctl daemon-reload"
+            )
+            ServiceUtils.run_bash_script(self, cmd, "Kill-Switch Deactivation",
+                                         on_close=self.update_status)
         self.update_status()
 
+    # ===================== STATUS =====================
     def update_status(self):
-        """Triggers a non-blocking update of status."""
-        if self.is_updating: return
+        if self.is_updating:
+            return
         self.is_updating = True
         threading.Thread(target=self._update_status_worker, daemon=True).start()
 
     def _update_status_worker(self):
-        """Background worker for status checks."""
         try:
-            # OSK Status
             osk_active = False
             try:
-                res = subprocess.check_output(["gsettings", "get", "org.gnome.desktop.a11y.applications", "screen-keyboard-enabled"], text=True).strip()
+                res = subprocess.check_output(
+                    ["gsettings", "get", "org.gnome.desktop.a11y.applications",
+                     "screen-keyboard-enabled"], text=True).strip()
                 osk_active = (res == "true")
-            except: pass
+            except:
+                pass
 
-            # Service Status
-            ks_status = ServiceUtils.check_status("suit-killswitch")
-            
-            # Browser status
+            ks_status = ServiceUtils.check_status("pommypc-killswitch")
             ch_active = self.ch_desktop.exists()
 
-            # Update UI on main thread
             self.after(0, lambda: self._update_ui(osk_active, ks_status, ch_active))
         except Exception as e:
             print(f"Kiosk update error: {e}")
@@ -297,72 +389,49 @@ except Exception as e:
             self.is_updating = False
 
     def _update_ui(self, osk_active, ks_status, ch_active):
-        """Updates UI elements with results from the worker."""
-        l = getattr(self.controller, "lang", "en")
-        texts = getattr(self.controller, "texts", {})
-        def txt(k): return texts.get(k, {}).get(l, k)
-        
         grey = self.colors["header"]
-        red = self.colors["danger"]
-        blue = self.colors["accent"]
         green = self.colors["success"]
-        
-        # OSK Button
-        self.btn_toggle_osk.configure(text=txt("btn_osk_on") if osk_active else txt("btn_osk_off"), 
-                                     fg_color=green if osk_active else grey,
-                                     hover_color="#1a8a38" if osk_active else "#52525b")
+        accent = self.colors["accent"]
 
-        # Killswitch Config
+        # OSK
+        self.btn_toggle_osk.configure(
+            text="OSK: ON" if osk_active else "OSK: OFF",
+            fg_color=green if osk_active else grey,
+            hover_color="#15803d" if osk_active else "#3f3f46"
+        )
+
+        # Kill-switch key label
         if self.config_file.exists():
             try:
                 with open(self.config_file, "r") as f:
                     data = json.load(f)
-                    self.key_label.configure(text=f"{txt('ks_current')}{data.get('key_name')}", text_color=green)
-            except: pass
-        else: self.key_label.configure(text=txt("ks_current_none"), text_color=self.colors["fg_dim"])
-        
-        # Killswitch Button (OFF = Grey, ON = Green)
-        if ks_status == "running": 
-            self.btn_toggle_ks.configure(text=txt("btn_ks_on"), fg_color=green, hover_color="#1a8a38")
-        elif ks_status == "stopped": 
-            self.btn_toggle_ks.configure(text=txt("btn_ks_installed"), fg_color=grey, hover_color="#52525b")
-        else: 
-            self.btn_toggle_ks.configure(text=txt("btn_ks_off"), fg_color=grey, hover_color="#52525b")
-        
-        # Browser Buttons (Autostart: OFF = Grey, ON = Green)
-        self.btn_auto_ch.configure(text=txt("btn_autostart_on") if ch_active else txt("btn_autostart_off"), 
-                                  fg_color=green if ch_active else grey,
-                                  hover_color="#1a8a38" if ch_active else "#52525b")
-        
-        self.btn_now_ch.configure(fg_color=green, hover_color="#1a8a38")
-        self.btn_learn.configure(fg_color=blue, hover_color="#2563eb")
+                    self.key_label.configure(
+                        text=f"Key: {data.get('key_name', '?')}",
+                        text_color=green
+                    )
+            except:
+                pass
+        else:
+            self.key_label.configure(text="No key assigned", text_color=self.colors["fg_dim"])
 
-    def launch_now(self, browser):
-        url = self.url_ent.get().strip()
-        cmd = f"chromium-browser --kiosk --password-store=basic {url} &"
-        subprocess.Popen(cmd, shell=True)
+        # Kill-switch button
+        if ks_status == "running":
+            self.btn_toggle_ks.configure(text="Kill-Switch: ON ✓", fg_color=green,
+                                         hover_color="#15803d")
+        elif ks_status == "stopped":
+            self.btn_toggle_ks.configure(text="Kill-Switch: Installed (stopped)", fg_color=grey,
+                                         hover_color="#3f3f46")
+        else:
+            self.btn_toggle_ks.configure(text="Kill-Switch: OFF", fg_color=grey,
+                                         hover_color="#3f3f46")
 
-    def toggle_osk(self):
-        try:
-            res = subprocess.check_output(["gsettings", "get", "org.gnome.desktop.a11y.applications", "screen-keyboard-enabled"], text=True).strip()
-            new_state = "false" if res == "true" else "true"
-            subprocess.run(["gsettings", "set", "org.gnome.desktop.a11y.applications", "screen-keyboard-enabled", new_state])
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not toggle OSK: {e}")
-        self.update_status()
+        # Autostart button
+        self.btn_auto_ch.configure(
+            text="Autostart: ON ✓" if ch_active else "Autostart: OFF",
+            fg_color=green if ch_active else grey,
+            hover_color="#15803d" if ch_active else "#3f3f46"
+        )
 
     def update_texts(self):
-        l = getattr(self.controller, "lang", "en")
-        texts = getattr(self.controller, "texts", {})
-        def txt(k): return texts.get(k, {}).get(l, k)
-        
-        # self.btn_back.configure(text=txt("btn_back")) # Forced Icon, don't overwrite
-        self.lbl_title.configure(text=txt("kiosk_header"))
-        self.lbl_info.configure(text=txt("desc_kiosk"))
-        self.lbl_url.configure(text=txt("kiosk_url_lbl"))
-        self.lbl_ch_title.configure(text=txt("kiosk_browser_ch"))
-        self.btn_now_ch.configure(text=txt("btn_launch_now"))
-        self.lbl_osk_title.configure(text=txt("osk_header"))
-        self.lbl_ks_title.configure(text=txt("ks_header"))
-        self.btn_learn.configure(text=txt("btn_ks_learn"), fg_color=self.colors["accent"])
+        # Static English text — nothing to translate
         self.update_status()
