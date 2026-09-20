@@ -11,7 +11,7 @@ logger = get_logger("menu")
 
 class MainMenuView(Adw.NavigationPage):
     def __init__(self, window):
-        super().__init__(title="SUIT for Fedora", tag="main_menu")
+        super().__init__(title="Pommy Autodarts", tag="main_menu")
         self.window = window
         
         # Scrolled container with kinetic touch scrolling
@@ -53,11 +53,11 @@ class MainMenuView(Adw.NavigationPage):
         text_box.set_valign(Gtk.Align.CENTER)
         text_box.set_hexpand(True)
 
-        self.lbl_title = Gtk.Label(label="SUIT for Fedora", xalign=0)
+        self.lbl_title = Gtk.Label(label="Pommy Autodarts", xalign=0)
         self.lbl_title.add_css_class("title-1")
         text_box.append(self.lbl_title)
         
-        self.lbl_subtitle = Gtk.Label(label="Setup Utilities by IteraThor for Autodarts", xalign=0)
+        self.lbl_subtitle = Gtk.Label(label="Autodarts Setup & Tools by Pommy Prints", xalign=0)
         self.lbl_subtitle.add_css_class("dim-label")
         text_box.append(self.lbl_subtitle)
         
@@ -227,7 +227,7 @@ class MainMenuView(Adw.NavigationPage):
                 return
 
             if not info.get("has_update"):
-                self.window.show_toast("SUIT for Fedora is up to date.")
+                self.window.show_toast("Pommy Autodarts is up to date.")
                 return
 
             count = info.get("commits_behind", 1)

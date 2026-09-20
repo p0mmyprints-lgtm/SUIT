@@ -14,7 +14,7 @@ logger = get_logger("window")
 
 class SuitWindow(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title="SUIT for Fedora")
+        super().__init__(application=app, title="Pommy Autodarts")
         self.set_default_size(1020, 820)
         self.set_size_request(480, 600)
 
@@ -66,7 +66,7 @@ class SuitWindow(Adw.ApplicationWindow):
         self.header_bar.pack_start(self.btn_back)
 
         # Title Widget
-        self.title_widget = Adw.WindowTitle(title="SUIT for Fedora")
+        self.title_widget = Adw.WindowTitle(title="Pommy Autodarts")
         self.header_bar.set_title_widget(self.title_widget)
 
         # Navigation View (smooth hardware-accelerated transitions)
@@ -155,11 +155,11 @@ class SuitWindow(Adw.ApplicationWindow):
 
         if page and page != self.menu_page:
             self.btn_back.set_visible(True)
-            self.title_widget.set_title(page.get_title() or "SUIT for Fedora")
-            self.title_widget.set_subtitle("SUIT for Fedora")
+            self.title_widget.set_title(page.get_title() or "Pommy Autodarts")
+            self.title_widget.set_subtitle("Pommy Autodarts")
         else:
             self.btn_back.set_visible(False)
-            self.title_widget.set_title("SUIT for Fedora")
+            self.title_widget.set_title("Pommy Autodarts")
             self.title_widget.set_subtitle("")
 
     def show_toast(self, text):
