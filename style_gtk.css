@@ -442,3 +442,150 @@ button.compact-btn,
     background-color: #1d261d;
     border-color: #55c94b;
 }
+
+/* ===== Pommy Autodarts Submenu Theme ===== */
+
+/* Dashboard / settings cards */
+.tile-card,
+.tile-card-compact {
+    background-color: #141814;
+    border: 1px solid #294329;
+}
+
+/* Normal secondary buttons */
+.secondary-btn,
+button.compact-btn,
+.compact-btn {
+    background-color: #171b17;
+    border: 1px solid #315a31;
+    color: #eeeeee;
+}
+
+.secondary-btn:hover,
+button.compact-btn:hover,
+.compact-btn:hover {
+    background-color: #1d261d;
+    border-color: #55c94b;
+}
+
+/* Main touch/action buttons */
+.touch-btn {
+    background-color: #171b17;
+    border: 1px solid #315a31;
+    color: #eeeeee;
+}
+
+.touch-btn:hover {
+    background-color: #1d261d;
+    border-color: #55c94b;
+}
+
+/* Rotation buttons */
+.angle-touch-btn {
+    background-color: #171b17;
+    border: 1px solid #315a31;
+    color: #eeeeee;
+}
+
+.angle-touch-btn:hover {
+    background-color: #1d261d;
+    border-color: #55c94b;
+}
+
+/* Service control buttons */
+.service-touch-btn {
+    background-color: #171b17;
+    border: 1px solid #315a31;
+    color: #eeeeee;
+}
+
+.service-touch-btn:hover {
+    background-color: #1d261d;
+    border-color: #55c94b;
+}
+
+/* Green active switches */
+switch:checked {
+    background-color: #55c94b;
+}
+
+/* Dropdowns */
+dropdown > button,
+combobox button {
+    background-color: #171b17;
+    border: 1px solid #315a31;
+}
+
+dropdown > button:hover,
+combobox button:hover {
+    border-color: #55c94b;
+}
+
+/* Keep destructive controls red */
+.secondary-btn-destructive {
+    background-color: alpha(#e01b24, 0.12);
+    border-color: alpha(#e01b24, 0.35);
+    color: #ff7b63;
+}
+
+/* Green focus/highlight */
+entry:focus,
+button:focus {
+    outline-color: #55c94b;
+}
+
+
+/* ===== Pommy Green Accent Overrides ===== */
+
+/* Camera Focus selected camera */
+.camera-tab-btn.active-tab {
+    background-color: #3faa38;
+    color: #ffffff;
+    border-color: #55c94b;
+}
+
+.camera-tab-btn.active-tab:hover {
+    background-color: #49b941;
+}
+
+/* Replace GTK blue suggested-action buttons */
+.suggested-action {
+    background-color: #3faa38;
+    color: #ffffff;
+    border-color: #55c94b;
+}
+
+.suggested-action:hover {
+    background-color: #49b941;
+    border-color: #63d85a;
+}
+
+/* EntryRow / text input focus */
+entry:focus,
+row:focus-within {
+    border-color: #55c94b;
+    outline-color: #55c94b;
+}
+
+/* Selection highlight inside text fields */
+selection {
+    background-color: #3faa38;
+    color: #ffffff;
+}
+
+
+/* Remove focus border from Pommy home menu rows */
+.pommy-menu-row:focus,
+.pommy-menu-row:focus-within {
+    border-color: transparent;
+    outline: none;
+}
+
+
+/* Remove green focus lines from preference rows */
+preferencesgroup row:focus,
+preferencesgroup row:focus-within {
+    border-color: transparent;
+    outline: none;
+}
+

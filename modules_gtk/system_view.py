@@ -5,6 +5,8 @@ from gi.repository import Gtk, Adw, GLib, Gdk
 import getpass
 import subprocess
 import shutil
+import json
+import urllib.request
 from core.logger import get_logger
 from core.system_service import SystemService
 from modules_gtk.async_utils import run_async
@@ -245,7 +247,41 @@ class SystemView(Adw.NavigationPage):
         self.row_chromium.add_suffix(self.box_chromium)
         self.grp_apps.add(self.row_chromium)
 
-        # 3. Advanced Users Submenu Row
+        # 3. Tools for Autodarts Extension
+        self.row_tools_extension = Adw.ActionRow(
+            title="Tools for Autodarts Extension",
+            subtitle="Install extra tools and features for the Autodarts web interface."
+        )
+
+        self.box_tools_extension = Gtk.Box(
+            orientation=Gtk.Orientation.HORIZONTAL,
+            spacing=8
+        )
+        self.box_tools_extension.set_valign(Gtk.Align.CENTER)
+
+        self.btn_tools_update = create_button_with_icon(
+            "software-update-available-symbolic",
+            "Check Updates",
+            "secondary-btn compact-btn",
+            height=38
+        )
+        self.btn_tools_update.connect("clicked", self._on_tools_update_clicked)
+
+        self.btn_tools_extension = create_button_with_icon(
+            "web-browser-symbolic",
+            "Open Installer",
+            "suggested-action compact-btn",
+            height=38
+        )
+        self.btn_tools_extension.connect("clicked", self._on_tools_extension_clicked)
+
+        self.box_tools_extension.append(self.btn_tools_update)
+        self.box_tools_extension.append(self.btn_tools_extension)
+
+        self.row_tools_extension.add_suffix(self.box_tools_extension)
+        self.grp_apps.add(self.row_tools_extension)
+
+        # 4. Advanced Users Submenu Row
         self.row_advanced = Adw.ActionRow(
             title="Advanced Users",
             subtitle="Tailscale remote VPN and Android Darts Scorer app."
@@ -259,6 +295,88 @@ class SystemView(Adw.NavigationPage):
         self._pending_refresh = False
 
         self.connect("map", lambda w: self.refresh())
+
+    def _on_tools_update_clicked(self, button):
+        """Check GitHub for the latest Tools for Autodarts release."""
+        button.set_sensitive(False)
+
+        def worker():
+            url = "https://api.github.com/repos/creazy231/tools-for-autodarts/releases/latest"
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "Pommy-Autodarts"
+                }
+            )
+
+            with urllib.request.urlopen(request, timeout=10) as response:
+                data = json.loads(response.read().decode("utf-8"))
+
+            return {
+                "version": data.get("tag_name", "Unknown"),
+                "name": data.get("name", ""),
+                "url": data.get(
+                    "html_url",
+                    "https://github.com/creazy231/tools-for-autodarts/releases"
+                )
+            }
+
+        def on_done(result):
+            button.set_sensitive(True)
+
+            version = result["version"]
+            name = result["name"]
+
+            body = f"Latest available version: {version}"
+            if name and name != version:
+                body += f"\n{name}"
+
+            body += (
+                "\n\nChromium normally updates Web Store extensions automatically. "
+                "You can open the installer page to review or update the extension."
+            )
+
+            dialog = Adw.AlertDialog(
+                heading="Tools for Autodarts Update",
+                body=body
+            )
+            dialog.add_response("close", "Close")
+            dialog.add_response("installer", "Open Installer")
+            dialog.set_response_appearance(
+                "installer",
+                Adw.ResponseAppearance.SUGGESTED
+            )
+
+            def on_response(d, resp):
+                if resp == "installer":
+                    self._on_tools_extension_clicked(None)
+
+            dialog.connect("response", on_response)
+            dialog.present(self.window)
+
+        def on_error(err):
+            button.set_sensitive(True)
+
+            dialog = Adw.AlertDialog(
+                heading="Update Check Failed",
+                body=(
+                    "Could not check the latest Tools for Autodarts release.\n\n"
+                    "Check the internet connection and try again."
+                )
+            )
+            dialog.add_response("close", "Close")
+            dialog.present(self.window)
+
+        run_async(worker, on_done=on_done, on_error=on_error)
+
+    def _on_tools_extension_clicked(self, button):
+        """Open the Tools for Autodarts extension installer in Chromium."""
+        url = "https://chromewebstore.google.com/detail/tools-for-autodarts/oolfddhehmbpdnlmoljmllcdggmkgihh"
+        try:
+            subprocess.Popen(["/usr/bin/chromium-browser", url])
+        except FileNotFoundError:
+            subprocess.Popen(["xdg-open", url])
 
     def refresh(self):
         if self._refreshing:
