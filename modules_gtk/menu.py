@@ -11,7 +11,7 @@ logger = get_logger("menu")
 
 class MainMenuView(Adw.NavigationPage):
     def __init__(self, window):
-        super().__init__(title="Pommy Autodarts", tag="main_menu")
+        super().__init__(title="PULSE", tag="main_menu")
         self.window = window
         
         # Scrolled container with kinetic touch scrolling
@@ -42,7 +42,7 @@ class MainMenuView(Adw.NavigationPage):
         banner_inner.set_margin_start(20)
         banner_inner.set_margin_end(20)
         
-        logo_path = self.window.project_dir / "assets" / "icons" / "suit-icon.png"
+        logo_path = self.window.project_dir / "assets" / "icons" / "pommy-banner.png"
         if logo_path.exists():
             logo_img = Gtk.Image.new_from_file(str(logo_path))
             logo_img.set_pixel_size(64)
@@ -53,12 +53,12 @@ class MainMenuView(Adw.NavigationPage):
         text_box.set_valign(Gtk.Align.CENTER)
         text_box.set_hexpand(True)
 
-        self.lbl_title = Gtk.Label(label="Pommy Autodarts", xalign=0)
+        self.lbl_title = Gtk.Label(label="PULSE", xalign=0)
         self.lbl_title.add_css_class("title-1")
         self.lbl_title.add_css_class("pommy-title")
         text_box.append(self.lbl_title)
         
-        self.lbl_subtitle = Gtk.Label(label="Autodarts Setup & Tools by Pommy Prints", xalign=0)
+        self.lbl_subtitle = Gtk.Label(label="by Pommy Prints • Autodarts Setup, Tools & Control", xalign=0)
         self.lbl_subtitle.add_css_class("dim-label")
         text_box.append(self.lbl_subtitle)
         
@@ -79,6 +79,7 @@ class MainMenuView(Adw.NavigationPage):
         items = [
             ("btn_system", "preferences-system-symbolic", "System Utilities & Tweaks", "Performance, power, and touch tweaks.", self._open_system, True),
             ("btn_autodarts", "darts-symbolic", "Autodarts Setup", "Board pairing, service, and camera telemetry.", self._open_autodarts, True),
+            ("btn_boardfx", "applications-graphics-symbolic", "BoardFX", "Reactive lighting for Autodarts.", self._open_boardfx, True),
             ("btn_focus", "camera-photo-symbolic", "Camera Focus Tool", "Adjust lens sharpness and alignment.", self._open_focus, True),
             ("btn_touch", "screen-touch-symbolic", "Screen & Touch Manager", "Display rotation and touch calibration.", self._open_rotation, True),
             ("btn_kiosk", "view-fullscreen-symbolic", "Kiosk Mode", "Fullscreen browser autostart and controls.", self._open_kiosk, True),
@@ -162,6 +163,10 @@ class MainMenuView(Adw.NavigationPage):
         logger.debug("Navigating to Autodarts view")
         self.window.open_autodarts_page()
 
+    def _open_boardfx(self):
+        logger.debug("Navigating to BoardFX view")
+        self.window.open_boardfx_page()
+
     def _open_focus(self):
         logger.debug("Navigating to Camera Focus view")
         self.window.open_focus_page()
@@ -219,7 +224,7 @@ class MainMenuView(Adw.NavigationPage):
                 return
 
             if not info.get("has_update"):
-                self.window.show_toast("Pommy Autodarts is up to date.")
+                self.window.show_toast("PULSE is up to date.")
                 return
 
             count = info.get("commits_behind", 1)

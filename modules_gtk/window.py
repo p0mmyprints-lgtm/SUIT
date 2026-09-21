@@ -14,7 +14,7 @@ logger = get_logger("window")
 
 class SuitWindow(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title="Pommy Autodarts")
+        super().__init__(application=app, title="PULSE")
         self.set_default_size(1020, 820)
         self.set_size_request(480, 600)
 
@@ -66,7 +66,7 @@ class SuitWindow(Adw.ApplicationWindow):
         self.header_bar.pack_start(self.btn_back)
 
         # Title Widget
-        self.title_widget = Adw.WindowTitle(title="Pommy Autodarts")
+        self.title_widget = Adw.WindowTitle(title="PULSE")
         self.header_bar.set_title_widget(self.title_widget)
 
         # Navigation View (smooth hardware-accelerated transitions)
@@ -82,6 +82,7 @@ class SuitWindow(Adw.ApplicationWindow):
         self.kiosk_page = None
         self.system_page = None
         self.usb_page = None
+        self.boardfx_page = None
 
         # Push Main Menu
         self.menu_page = MainMenuView(self)
@@ -155,11 +156,11 @@ class SuitWindow(Adw.ApplicationWindow):
 
         if page and page != self.menu_page:
             self.btn_back.set_visible(True)
-            self.title_widget.set_title(page.get_title() or "Pommy Autodarts")
-            self.title_widget.set_subtitle("Pommy Autodarts")
+            self.title_widget.set_title(page.get_title() or "PULSE")
+            self.title_widget.set_subtitle("PULSE by Pommy Prints")
         else:
             self.btn_back.set_visible(False)
-            self.title_widget.set_title("Pommy Autodarts")
+            self.title_widget.set_title("PULSE")
             self.title_widget.set_subtitle("")
 
     def show_toast(self, text):
@@ -222,6 +223,12 @@ class SuitWindow(Adw.ApplicationWindow):
         self.nav_view.push(self.system_page)
         if hasattr(self.system_page, "refresh"):
             self.system_page.refresh()
+
+    def open_boardfx_page(self):
+        if not self.boardfx_page:
+            from modules_gtk.boardfx_view import BoardFXView
+            self.boardfx_page = BoardFXView(self)
+        self.nav_view.push(self.boardfx_page)
 
     def open_usb_page(self):
         if not self.usb_page:

@@ -84,8 +84,8 @@ def create_desktop_launcher():
 
     desktop_entry = f"""[Desktop Entry]
 Version=1.0
-Name=Pommy Autodarts
-Comment=Autodarts Setup & Tools by Pommy Prints
+Name=PULSE
+Comment=Autodarts Setup, Tools & Control by Pommy Prints
 Exec=/usr/bin/python3 {PROJECT_DIR}/app_gtk.py
 Icon=de.iterathor.suit.gtk
 Path={PROJECT_DIR}
