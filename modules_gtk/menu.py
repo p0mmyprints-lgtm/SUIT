@@ -55,6 +55,7 @@ class MainMenuView(Adw.NavigationPage):
 
         self.lbl_title = Gtk.Label(label="Pommy Autodarts", xalign=0)
         self.lbl_title.add_css_class("title-1")
+        self.lbl_title.add_css_class("pommy-title")
         text_box.append(self.lbl_title)
         
         self.lbl_subtitle = Gtk.Label(label="Autodarts Setup & Tools by Pommy Prints", xalign=0)
@@ -63,34 +64,13 @@ class MainMenuView(Adw.NavigationPage):
         
         banner_inner.append(text_box)
 
-        # Community & QR Dialog Button on most right
-        self.btn_community = Gtk.Button()
-        self.btn_community.set_valign(Gtk.Align.CENTER)
-        self.btn_community.add_css_class("compact-btn")
-        self.btn_community.add_css_class("secondary-btn")
-        self.btn_community.set_tooltip_text("IteraThor Community, Discord & 3D Print Models")
-
-        btn_comm_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        btn_comm_box.set_halign(Gtk.Align.CENTER)
-        btn_comm_box.set_valign(Gtk.Align.CENTER)
-
-        icon_qr = Gtk.Image.new_from_icon_name("qr-code-symbolic")
-        icon_qr.set_pixel_size(18)
-        btn_comm_box.append(icon_qr)
-
-        lbl_comm = Gtk.Label(label="Community")
-        lbl_comm.add_css_class("heading")
-        btn_comm_box.append(lbl_comm)
-
-        self.btn_community.set_child(btn_comm_box)
-        self.btn_community.connect("clicked", self._open_community_dialog)
-        banner_inner.append(self.btn_community)
 
         banner_card.append(banner_inner)
         main_box.append(banner_card)
 
         # Preferences Group for Modules
         self.pref_group = Adw.PreferencesGroup()
+        self.pref_group.add_css_class("pommy-menu")
         main_box.append(self.pref_group)
 
         self.rows = {}
@@ -99,7 +79,6 @@ class MainMenuView(Adw.NavigationPage):
         items = [
             ("btn_system", "preferences-system-symbolic", "System Utilities & Tweaks", "Performance, power, and touch tweaks.", self._open_system, True),
             ("btn_autodarts", "darts-symbolic", "Autodarts Setup", "Board pairing, service, and camera telemetry.", self._open_autodarts, True),
-            ("btn_autoglow", "display-brightness-symbolic", "AutoGlow 2 Manager", "WLED dartboard automation and lighting effects.", None, False),
             ("btn_focus", "camera-photo-symbolic", "Camera Focus Tool", "Adjust lens sharpness and alignment.", self._open_focus, True),
             ("btn_touch", "screen-touch-symbolic", "Screen & Touch Manager", "Display rotation and touch calibration.", self._open_rotation, True),
             ("btn_kiosk", "view-fullscreen-symbolic", "Kiosk Mode", "Fullscreen browser autostart and controls.", self._open_kiosk, True),
@@ -111,6 +90,7 @@ class MainMenuView(Adw.NavigationPage):
             is_enabled = item[5] if len(item) > 5 else True
 
             row = Adw.ActionRow()
+            row.add_css_class("pommy-menu-row")
             row.set_title(GLib.markup_escape_text(title_str))
             row.set_subtitle(GLib.markup_escape_text(subtitle_str))
             
@@ -147,6 +127,7 @@ class MainMenuView(Adw.NavigationPage):
 
         self.btn_update = Gtk.Button()
         self.btn_update.add_css_class("suggested-action")
+        self.btn_update.add_css_class("pommy-update-btn")
         self.btn_update.add_css_class("touch-btn")
         self.btn_update.set_size_request(-1, 54)
         self.btn_update.set_margin_top(6)

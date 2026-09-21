@@ -404,3 +404,41 @@ button.compact-btn,
 }
 
 
+
+/* ===== Pommy Autodarts Home Theme ===== */
+
+.pommy-title {
+    color: #55c94b;
+    font-weight: 800;
+}
+
+.banner-card {
+    background-color: #151815;
+    border: 1px solid #294329;
+    border-radius: 16px;
+}
+
+.pommy-menu-row {
+    background-color: #171a17;
+    border-bottom: 1px solid #252a25;
+}
+
+.pommy-menu-row:hover {
+    background-color: #1c231c;
+}
+
+.pommy-menu-row image {
+    color: #55c94b;
+}
+
+.pommy-update-btn {
+    background-color: #171a17;
+    color: #eeeeee;
+    border: 1px solid #315a31;
+    border-radius: 12px;
+}
+
+.pommy-update-btn:hover {
+    background-color: #1d261d;
+    border-color: #55c94b;
+}
