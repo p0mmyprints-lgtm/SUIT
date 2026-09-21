@@ -84,8 +84,8 @@ def create_desktop_launcher():
 
     desktop_entry = f"""[Desktop Entry]
 Version=1.0
-Name=SUIT for Fedora
-Comment=Setup Utilities by IteraThor (GTK4 / Libadwaita)
+Name=Pommy Autodarts
+Comment=Autodarts Setup & Tools by Pommy Prints
 Exec=/usr/bin/python3 {PROJECT_DIR}/app_gtk.py
 Icon=de.iterathor.suit.gtk
 Path={PROJECT_DIR}
