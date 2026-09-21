@@ -1,0 +1,13 @@
+[Unit]
+Description=PULSE BoardFX - Reactive lighting for Autodarts
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Pommy-SUIT
+ExecStart=/usr/bin/python3 -m core.boardfx_runtime
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
