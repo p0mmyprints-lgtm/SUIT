@@ -147,6 +147,17 @@ class MainMenuView(Adw.NavigationPage):
         self.btn_update.connect("clicked", self._on_check_updates)
         self.update_group.add(self.btn_update)
 
+        # Original project acknowledgement
+        credit = Gtk.Label(
+            label="Based on SUIT for Fedora by IteraThor • Customised by Pommy Prints"
+        )
+        credit.add_css_class("dim-label")
+        credit.add_css_class("pommy-credit")
+        credit.set_margin_top(12)
+        credit.set_margin_bottom(6)
+        credit.set_halign(Gtk.Align.CENTER)
+        main_box.append(credit)
+
     def _open_autodarts(self):
         logger.debug("Navigating to Autodarts view")
         self.window.open_autodarts_page()
