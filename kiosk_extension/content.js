@@ -7,8 +7,11 @@
   if (window.__suitKioskInitialized) return;
   window.__suitKioskInitialized = true;
 
-  const isConfigHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  const isConfigPort = window.location.port === "3180";
+  const isLocalConfigHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  const isAutodartsDirect = window.location.hostname.endsWith(".autodarts.direct");
+  const isConfigHost = isLocalConfigHost || isAutodartsDirect;
+  const isConfigPort = (isLocalConfigHost && window.location.port === "3180") ||
+                       (isAutodartsDirect && window.location.port === "3181");
 
   // =========================================================================
   // SVGs matching Autodarts and Chakra design language

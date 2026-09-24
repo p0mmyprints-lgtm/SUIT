@@ -15,7 +15,7 @@ logger = get_logger("window")
 class SuitWindow(Adw.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="PULSE")
-        self.set_default_size(1020, 820)
+        self.set_default_size(1020, 950)
         self.set_size_request(480, 600)
 
         self.project_dir = Path(__file__).resolve().parent.parent
