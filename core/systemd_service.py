@@ -7,11 +7,24 @@ from core.logger import get_logger
 
 logger = get_logger("systemd")
 
+# Autodarts v2 runs as a per-user service (systemctl --user); v1 ran system-wide.
+# A unit with a file in the user's own unit folder is managed on the user's bus.
+USER_UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
+
+
+def _is_user_unit(unit_name: str) -> bool:
+    return (USER_UNIT_DIR / unit_name).exists()
+
+
+def _bus_type(user: bool):
+    return Gio.BusType.SESSION if user else Gio.BusType.SYSTEM
+
+
 class SystemdService:
     @staticmethod
-    def _get_manager_proxy() -> Gio.DBusProxy | None:
+    def _get_manager_proxy(user: bool = False) -> Gio.DBusProxy | None:
         try:
-            bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+            bus = Gio.bus_get_sync(_bus_type(user), None)
             return Gio.DBusProxy.new_sync(
                 bus,
                 Gio.DBusProxyFlags.NONE,
@@ -22,13 +35,14 @@ class SystemdService:
                 None
             )
         except Exception:
-            logger.exception("Failed to connect to systemd DBus Manager on system bus")
+            logger.exception("Failed to connect to systemd DBus Manager on %s bus", "user" if user else "system")
             return None
 
     @classmethod
     def get_status(cls, unit_name: str) -> dict:
         result = {"active_state": "nofile", "sub_state": "dead", "unit_file_state": "missing"}
-        proxy = cls._get_manager_proxy()
+        user = _is_user_unit(unit_name)
+        proxy = cls._get_manager_proxy(user)
         if not proxy:
             return result
 
@@ -59,7 +73,7 @@ class SystemdService:
             return result
 
         try:
-            bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+            bus = Gio.bus_get_sync(_bus_type(user), None)
             unit_proxy = Gio.DBusProxy.new_sync(
                 bus,
                 Gio.DBusProxyFlags.NONE,
@@ -91,7 +105,8 @@ class SystemdService:
 
     @classmethod
     def _execute_unit_action(cls, action: str, unit_name: str, mode: str = "replace") -> bool:
-        proxy = cls._get_manager_proxy()
+        user = _is_user_unit(unit_name)
+        proxy = cls._get_manager_proxy(user)
         dbus_method = {"start": "StartUnit", "stop": "StopUnit", "restart": "RestartUnit"}.get(action)
         if proxy and dbus_method:
             try:
@@ -105,20 +120,20 @@ class SystemdService:
                 logger.info(f"Successfully executed {action} for {unit_name} via DBus")
                 return True
             except Exception as e:
-                logger.warning(f"DBus {action} failed for {unit_name}: {e}. Trying sudo systemctl fallback...")
+                logger.warning(f"DBus {action} failed for {unit_name}: {e}. Trying systemctl fallback...")
 
-        # Fallback to sudo systemctl (leveraging passwordless sudoers)
+        # Fallback: systemctl --user for user units, passwordless sudo for system units
         try:
-            cmd = ["sudo", "systemctl", action, unit_name]
+            cmd = ["systemctl", "--user", action, unit_name] if user else ["sudo", "systemctl", action, unit_name]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if res.returncode == 0:
-                logger.info(f"Successfully executed {action} for {unit_name} via sudo systemctl")
+                logger.info(f"Successfully executed {action} for {unit_name} via {' '.join(cmd[:2])}")
                 return True
             else:
-                logger.error(f"sudo systemctl {action} {unit_name} failed: {res.stderr.strip()}")
+                logger.error(f"{' '.join(cmd)} failed: {res.stderr.strip()}")
                 return False
         except Exception:
-            logger.exception(f"Failed to execute {action} for {unit_name} via sudo systemctl")
+            logger.exception(f"Failed to execute {action} for {unit_name} via systemctl")
             return False
 
     @classmethod
@@ -138,4 +153,3 @@ class SystemdService:
         """Check if a systemd unit is currently in active state."""
         status = cls.get_status(unit_name)
         return status.get("active_state") == "active"
-

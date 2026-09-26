@@ -581,47 +581,76 @@ def save_cam_config(cams: list[str], width: int, height: int, fps: int, config_p
         return False
 
 
+AUTODARTS_INSTALLER = "https://autodarts.sh/sh/install.sh"
+AUTODARTS_UNIT = Path.home() / ".config" / "systemd" / "user" / "autodarts.service"
+AUTODARTS_UNIT_TEXT = """[Unit]
+Description=Autodarts board (v2)
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/autodarts run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"""
+
+
+def ensure_autodarts_service() -> None:
+    """Autodarts v2 has no command to install its service, so PULSE writes the user unit itself."""
+    import getpass
+    import subprocess
+    if not AUTODARTS_UNIT.exists():
+        AUTODARTS_UNIT.parent.mkdir(parents=True, exist_ok=True)
+        AUTODARTS_UNIT.write_text(AUTODARTS_UNIT_TEXT)
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    subprocess.run(["systemctl", "--user", "enable", "autodarts.service"], check=False)
+    subprocess.run(["systemctl", "--user", "restart", "autodarts.service"], check=False)
+    # Start the board at boot, before anyone logs in
+    subprocess.run(["sudo", "-n", "loginctl", "enable-linger", getpass.getuser()], check=False)
+
+
 def install_autodarts() -> tuple[bool, str]:
-    """Install official Autodarts release, set video group permissions, and restart service."""
+    """Install or update to the latest Autodarts v2 board. The installer also removes v1."""
     import getpass
     import subprocess
     user = getpass.getuser()
     script = (
-        f"curl -sL get.autodarts.io | bash && "
-        f"sudo usermod -aG video {user} && "
-        f"if [ -f /home/{user}/.local/opt/autodarts/autodarts ]; then "
-        f"sudo cp -f /home/{user}/.local/opt/autodarts/autodarts /usr/local/bin/autodarts && "
-        f"sudo restorecon -v /usr/local/bin/autodarts 2>/dev/null || true; "
-        f"sudo sed -i 's|ExecStart=.*|ExecStart=/usr/local/bin/autodarts|' /etc/systemd/system/autodarts.service && "
-        f"sudo systemctl daemon-reload && sudo systemctl restart autodarts.service; "
-        f"fi"
+        f"curl -fsSL {AUTODARTS_INSTALLER} | bash -s -- --headless && "
+        f"(sudo -n usermod -aG video {user} || true)"
     )
     try:
         proc = subprocess.run(script, shell=True, capture_output=True, text=True)
-        if proc.returncode == 0:
-            logger.info("Autodarts installation succeeded")
-            return True, "Autodarts installation completed."
-        logger.warning("Autodarts installation failed: %s", proc.stderr)
-        return False, f"Installation failed: {proc.stderr.strip()}"
+        if proc.returncode != 0:
+            err = (proc.stderr.strip() or proc.stdout.strip())[-300:]
+            logger.warning("Autodarts installation failed: %s", err)
+            return False, f"Installation failed: {err}"
+        ensure_autodarts_service()
+        logger.info("Autodarts installation succeeded")
+        return True, "Autodarts installed and started."
     except Exception as e:
         logger.exception("Failed installing Autodarts")
         return False, str(e)
 
 
 def uninstall_autodarts() -> tuple[bool, str]:
-    """Stop, disable service, remove systemd unit and local config/binaries."""
+    """Stop and remove Autodarts (v2, plus anything left from v1) and its configuration."""
     import subprocess
     home = str(Path.home())
     cmd = (
-        "sudo -n systemctl stop autodarts 2>/dev/null || true; "
-        "sudo -n systemctl disable autodarts 2>/dev/null || true; "
-        "sudo -n rm -f /etc/systemd/system/autodarts.service; "
+        "systemctl --user disable --now autodarts.service 2>/dev/null || true; "
+        f"rm -f {AUTODARTS_UNIT}; "
+        "systemctl --user daemon-reload; "
+        f"curl -fsSL {AUTODARTS_INSTALLER} | bash -s -- -u --headless; "
+        # Leftovers from Autodarts v1
+        "sudo -n systemctl disable --now autodarts autodartsupdater 2>/dev/null || true; "
+        "sudo -n rm -f /etc/systemd/system/autodarts.service /etc/systemd/system/autodartsupdater.service /usr/local/bin/autodarts; "
         "sudo -n systemctl daemon-reload; "
-        f"rm -rf {home}/.local/opt/autodarts {home}/.local/bin/autodarts {home}/.config/autodarts /usr/bin/autodarts /opt/autodarts; "
-        "pkill -9 -f autodarts 2>/dev/null || true"
+        f"rm -rf {home}/.local/opt/autodarts {home}/.local/share/autodarts {home}/.local/bin/autodarts {home}/.config/autodarts"
     )
     try:
-        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        subprocess.run(cmd, shell=True, capture_output=True, text=True)
         logger.info("Autodarts uninstallation completed")
         return True, "Autodarts has been uninstalled."
     except Exception as e:
@@ -633,7 +662,7 @@ _latest_version_cache = {"value": None, "checked": 0.0}
 
 
 def fetch_latest_version(max_age: int = 3600) -> str | None:
-    """Newest Autodarts release (e.g. "v1.0.7") from the official release list, cached for an hour."""
+    """Newest Autodarts v2 board release (e.g. "v2.0.2") from the official release list, cached for an hour."""
     import platform
     import time
     now = time.time()
@@ -641,11 +670,12 @@ def fetch_latest_version(max_age: int = 3600) -> str | None:
         return _latest_version_cache["value"]
     machine = platform.machine().lower()
     arch = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(machine, "armv7l")
-    url = f"https://get.autodarts.io/detection/latest/linux/{arch}/RELEASES.json"
+    url = "https://releases.autodarts.com/headless/downloads/latest.stable.json"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "SUIT"})
         with urllib.request.urlopen(req, timeout=3.0) as resp:
-            value = json.loads(resp.read().decode("utf-8")).get("currentVersion")
+            ver = json.loads(resp.read().decode("utf-8"))["platforms"][f"linux-{arch}"]["version"]
+        value = ver if ver.startswith("v") else f"v{ver}"
         _latest_version_cache.update(value=value, checked=now)
     except Exception as e:
         logger.info("Could not check latest Autodarts version: %s", e)

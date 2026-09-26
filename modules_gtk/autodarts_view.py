@@ -323,7 +323,9 @@ class AutodartsView(Adw.NavigationPage):
 
         # Initial visibility based on whether Autodarts is installed
         installed_init = (
-            Path("/etc/systemd/system/autodarts.service").exists()
+            (Path.home() / ".local" / "share" / "autodarts" / "autodarts").exists()
+            or (Path.home() / ".config" / "systemd" / "user" / "autodarts.service").exists()
+            or Path("/etc/systemd/system/autodarts.service").exists()
             or Path("/usr/lib/systemd/system/autodarts.service").exists()
             or (Path.home() / ".local" / "opt" / "autodarts" / "autodarts").exists()
             or Path("/usr/local/bin/autodarts").exists()
