@@ -606,9 +606,18 @@ def ensure_autodarts_service() -> None:
         AUTODARTS_UNIT.write_text(AUTODARTS_UNIT_TEXT)
     subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
     subprocess.run(["systemctl", "--user", "enable", "autodarts.service"], check=False)
-    subprocess.run(["systemctl", "--user", "restart", "autodarts.service"], check=False)
     # Start the board at boot, before anyone logs in
     subprocess.run(["sudo", "-n", "loginctl", "enable-linger", getpass.getuser()], check=False)
+    # Right after an upgrade, v1 can still be letting go of port 3180, and v2 does not
+    # retry binding. Restart until its API answers.
+    import time
+    for attempt in range(4):
+        subprocess.run(["systemctl", "--user", "restart", "autodarts.service"], check=False)
+        for _ in range(10):
+            time.sleep(1)
+            if is_port_open():
+                return
+    logger.warning("Autodarts started but its API is not answering on port %s", DEFAULT_PORT)
 
 
 def install_autodarts() -> tuple[bool, str]:
