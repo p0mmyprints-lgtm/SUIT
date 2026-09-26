@@ -628,3 +628,38 @@ def uninstall_autodarts() -> tuple[bool, str]:
         logger.exception("Failed uninstalling Autodarts")
         return False, str(e)
 
+
+_latest_version_cache = {"value": None, "checked": 0.0}
+
+
+def fetch_latest_version(max_age: int = 3600) -> str | None:
+    """Newest Autodarts release (e.g. "v1.0.7") from the official release list, cached for an hour."""
+    import platform
+    import time
+    now = time.time()
+    if now - _latest_version_cache["checked"] < max_age:
+        return _latest_version_cache["value"]
+    machine = platform.machine().lower()
+    arch = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(machine, "armv7l")
+    url = f"https://get.autodarts.io/detection/latest/linux/{arch}/RELEASES.json"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "SUIT"})
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            value = json.loads(resp.read().decode("utf-8")).get("currentVersion")
+        _latest_version_cache.update(value=value, checked=now)
+    except Exception as e:
+        logger.info("Could not check latest Autodarts version: %s", e)
+        # Retry in 5 minutes rather than an hour
+        _latest_version_cache.update(checked=now - max_age + 300)
+    return _latest_version_cache["value"]
+
+
+def is_newer_version(latest, installed) -> bool:
+    """True if `latest` (e.g. "v1.0.8") is newer than `installed` (e.g. "v1.0.7")."""
+    def parse(v):
+        try:
+            return tuple(int(x) for x in str(v).lstrip("v").split("-")[0].split("."))
+        except ValueError:
+            return None
+    a, b = parse(latest), parse(installed)
+    return bool(a and b and a > b)

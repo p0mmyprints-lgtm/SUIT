@@ -11,7 +11,8 @@ from core.autodarts_service import (
     fetch_telemetry,
     read_cam_config, save_cam_config, get_available_cameras, get_supported_resolutions,
     control_detection_start, control_detection_stop, control_detection_reset,
-    install_autodarts, uninstall_autodarts
+    install_autodarts, uninstall_autodarts,
+    fetch_latest_version, is_newer_version
 )
 from modules_gtk.async_utils import run_async, open_browser_url
 from modules_gtk.dialogs.board_setup_dialog import BoardSetupDialog
@@ -118,6 +119,7 @@ class AutodartsView(Adw.NavigationPage):
 
         self.btn_reinstall = create_button_with_icon("software-update-available-symbolic", "Reinstall Autodarts", "secondary-btn", height=44, touch_btn=True)
         self.btn_reinstall.connect("clicked", self._on_install_clicked)
+        self.lbl_reinstall = self.btn_reinstall.get_child().get_last_child()
         self.maint_box.append(self.btn_reinstall)
 
         self.btn_uninstall = create_button_with_icon("user-trash-symbolic", "Uninstall Autodarts", "secondary-btn-destructive", height=44, touch_btn=True)
@@ -362,7 +364,7 @@ class AutodartsView(Adw.NavigationPage):
         def worker():
             status = SystemdService.get_status(SERVICE_NAME)
             telem = fetch_telemetry()
-            return {"status": status, "telem": telem}
+            return {"status": status, "telem": telem, "latest": fetch_latest_version()}
 
         def on_done(res):
             self.spinner.stop()
@@ -414,6 +416,10 @@ class AutodartsView(Adw.NavigationPage):
 
             self.btn_reinstall.set_sensitive(True)
             self.btn_uninstall.set_sensitive(True)
+
+        # Offer an update when a newer Autodarts release is out
+        installed_ver = telem.get("version") if active_state == "active" else None
+        self._set_update_available(data.get("latest"), installed_ver)
 
         # Visibility of sections based on whether Autodarts is installed
         is_installed = (active_state != "nofile")
@@ -569,6 +575,16 @@ class AutodartsView(Adw.NavigationPage):
         except Exception:
             logger.exception("Failed opening web browser for Autodarts UI")
             self.window.show_toast("Failed to open web browser.")
+
+    def _set_update_available(self, latest, installed):
+        if is_newer_version(latest, installed):
+            self.lbl_reinstall.set_text(f"Update Autodarts ({latest} available)")
+            self.btn_reinstall.remove_css_class("secondary-btn")
+            self.btn_reinstall.add_css_class("suggested-action")
+        else:
+            self.lbl_reinstall.set_text("Reinstall Autodarts")
+            self.btn_reinstall.remove_css_class("suggested-action")
+            self.btn_reinstall.add_css_class("secondary-btn")
 
     def _on_install_clicked(self, btn):
         self.window.show_toast("Installing Autodarts official release...")
