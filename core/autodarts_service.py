@@ -608,16 +608,34 @@ def ensure_autodarts_service() -> None:
     subprocess.run(["systemctl", "--user", "enable", "autodarts.service"], check=False)
     # Start the board at boot, before anyone logs in
     subprocess.run(["sudo", "-n", "loginctl", "enable-linger", getpass.getuser()], check=False)
-    # Right after an upgrade, v1 can still be letting go of port 3180, and v2 does not
-    # retry binding. Restart until its API answers.
+    # Right after an upgrade, v1 can still be holding port 3180, and v2 does not retry
+    # binding. Clear out what is left of v1 (old PULSE ran it from /usr/local/bin, which
+    # the Autodarts installer does not know about), then restart until v2 answers.
+    # On real boards this has taken over a minute.
     import time
-    for attempt in range(4):
+    subprocess.run(
+        "sudo -n systemctl disable --now autodarts.service autodartsupdater.service 2>/dev/null; "
+        "sudo -n pkill -f '[/]usr/local/bin/autodarts'; pkill -f '[.]local/opt/autodarts'; "
+        "sudo -n rm -f /usr/local/bin/autodarts",
+        shell=True, check=False)
+    for attempt in range(12):
         subprocess.run(["systemctl", "--user", "restart", "autodarts.service"], check=False)
         for _ in range(10):
             time.sleep(1)
-            if is_port_open():
+            if _v2_answering():
                 return
-    logger.warning("Autodarts started but its API is not answering on port %s", DEFAULT_PORT)
+    ports = subprocess.run("ss -ltnp | grep 3180", shell=True, capture_output=True, text=True).stdout
+    logger.warning("Autodarts v2 is not answering on port %s. Listening: %s", DEFAULT_PORT, ports.strip() or "nothing")
+
+
+def _v2_answering() -> bool:
+    """True once Autodarts v2 (not a leftover v1) answers on the local API port."""
+    try:
+        with urllib.request.urlopen(f"http://{DEFAULT_HOST}:{DEFAULT_PORT}/api/version", timeout=1.0) as resp:
+            ver = resp.read().decode("utf-8").strip().lstrip("v")
+        return bool(ver) and not ver.startswith(("0.", "1."))
+    except Exception:
+        return False
 
 
 def install_autodarts() -> tuple[bool, str]:
