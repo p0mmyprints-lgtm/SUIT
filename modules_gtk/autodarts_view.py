@@ -588,14 +588,22 @@ class AutodartsView(Adw.NavigationPage):
             self.btn_reinstall.remove_css_class("suggested-action")
             self.btn_reinstall.add_css_class("secondary-btn")
 
+    def _set_controls_locked(self, locked: bool):
+        for b in (self.btn_reinstall, self.btn_uninstall, self.btn_start, self.btn_stop, self.btn_restart):
+            b.set_sensitive(not locked)
+
     def _on_install_clicked(self, btn):
-        self.window.show_toast("Installing Autodarts official release...")
+        self.window.show_toast("Installing Autodarts - this can take up to 2 minutes...")
         self.is_busy = True
         self.spinner.start()
+        btn.set_sensitive(False)
+        self._set_controls_locked(True)
+        self.lbl_reinstall.set_text("Installing Autodarts…")
 
         def on_done(res):
             self.is_busy = False
             self.spinner.stop()
+            self._set_controls_locked(False)
             ok, msg = res
             self.window.show_toast(msg)
             self.refresh()
