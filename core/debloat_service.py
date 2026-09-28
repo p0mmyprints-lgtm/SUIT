@@ -14,7 +14,7 @@ class DebloatService:
         "gnome-maps", "simple-scan", "gnome-boxes", "libreoffice-core",
         "showtime", "snapshot", "gnome-characters", "gnome-tour",
         "yelp", "gnome-font-viewer", "papers", "gnome-connections",
-        "malcontent-control", "firefox", "gnome-text-editor",
+        "malcontent-control", "firefox",
         "gnome-calculator", "gnome-calendar", "loupe", "decibels"
     ]
 
@@ -161,7 +161,7 @@ class DebloatService:
             total_items = len(packages)
 
             if progress_callback:
-                progress_callback(0, total_items, "Starting package removal transaction...")
+                progress_callback(0, total_items, "Removing apps - this can take a few minutes. Don't turn off the PC...")
 
             for line in proc.stdout:
                 line_str = line.strip()
@@ -183,7 +183,9 @@ class DebloatService:
                     except ValueError:
                         pass
                 elif progress_callback:
-                    if "Running transaction" in line_str:
+                    if "waiting" in line_str.lower():
+                        progress_callback(0, total_items, "Waiting for Fedora's software updater to finish - don't turn off the PC...")
+                    elif "Running transaction" in line_str:
                         progress_callback(0, total_items, "Running removal transaction...")
                     elif "Preparing" in line_str:
                         progress_callback(0, total_items, "Preparing transaction...")
