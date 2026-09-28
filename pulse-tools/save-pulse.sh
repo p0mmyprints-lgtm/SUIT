@@ -16,7 +16,7 @@ else
   echo "No new changes - pushing any saved commits."
 fi
 
-if git push origin pommy-v2; then
+if git push origin pommy-v2 pommy-v2:main; then
   echo
   echo "=== DONE - saved to GitHub as $(git rev-parse --short HEAD) ==="
 else
