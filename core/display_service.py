@@ -242,56 +242,26 @@ class DisplayService:
 
     @staticmethod
     def get_touchscreens() -> list[str]:
+        """Kernel names of touchscreens: the exact name the udev rule's ATTRS{name} matches.
+        (Building the name from ID_VENDOR/ID_MODEL only matched by luck on some screens.)"""
         touchscreens = set()
-
-        # Fast path: scan already-parsed /run/udev/data/ for event nodes.
-        # Much faster than udevadm info --export-db which dumps the full DB.
-        try:
-            for entry_path in glob.glob("/run/udev/data/c13:*"):
-                try:
-                    with open(entry_path, "r") as f:
-                        content = f.read()
-                    if "ID_INPUT_TOUCHSCREEN=1" not in content:
-                        continue
-                    for line in content.splitlines():
-                        # Prefer E:ID_MODEL (udev property), fallback to E:NAME
-                        if line.startswith("E:ID_MODEL=") or line.startswith("E:NAME="):
-                            # Format may be E:KEY=VALUE or E: KEY=VALUE
-                            val = line.split("=", 1)[1].strip().strip('"')
-                            vendor_line = next(
-                                (l for l in content.splitlines() if l.startswith("E:ID_VENDOR=")),
-                                ""
-                            )
-                            vendor = vendor_line.split("=", 1)[1].strip() if vendor_line else ""
-                            full_name = f"{vendor} {val}".strip() if vendor else val
-                            if full_name:
-                                touchscreens.add(full_name)
-                            break
-                except Exception:
+        for ev in glob.glob("/sys/class/input/event*"):
+            try:
+                name = Path(ev, "device", "name").read_text().strip()
+                if not name:
                     continue
-        except Exception:
-            logger.exception("Failed scanning /run/udev/data/ for touchscreens")
-
-        # Fallback: read device names from sysfs, using INPUT_PROP_DIRECT (0x2)
-        # to identify touchscreens without spawning any subprocess.
-        if not touchscreens:
-            for name_file in glob.glob("/sys/class/input/event*/device/name"):
-                try:
-                    props_file = name_file.replace("/name", "/properties")
-                    if not Path(props_file).exists():
-                        continue
-                    with open(props_file, "r", encoding="utf-8") as f_props:
-                        props_val = int(f_props.read().strip(), 16)
-                    # INPUT_PROP_DIRECT (bit 1) = physically attached touchscreen
-                    if props_val & 0x2:
-                        with open(name_file, "r", encoding="utf-8") as f_name:
-                            dev_name = f_name.read().strip()
-                        if dev_name:
-                            touchscreens.add(dev_name)
-                except Exception:
+                dev = Path(ev, "dev").read_text().strip()
+                data = Path(f"/run/udev/data/c{dev}")
+                if data.exists() and "ID_INPUT_TOUCHSCREEN=1" in data.read_text():
+                    touchscreens.add(name)
                     continue
-
-        return sorted(list(touchscreens))
+                props = Path(ev, "device", "properties")
+                # INPUT_PROP_DIRECT (bit 1) = physically attached touchscreen
+                if props.exists() and int(props.read_text().strip(), 16) & 0x2:
+                    touchscreens.add(name)
+            except Exception:
+                continue
+        return sorted(touchscreens)
 
     @staticmethod
     def write_udev_rule(touch_device_name: str | None, matrix_str: str | None) -> bool:
