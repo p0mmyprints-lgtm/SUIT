@@ -94,8 +94,12 @@ fi
 section "Storage"
 TOTAL=$(df -BG --output=size / | tail -1 | tr -dc 0-9); FREE=$(df -BG --output=avail / | tail -1 | tr -dc 0-9)
 if [ "$FREE" -lt 2 ]; then bad "Only ${FREE} GB free of ${TOTAL} GB - use Free Up Space"
+elif [ "$FREE" -lt 6 ]; then warn "${FREE} GB free of ${TOTAL} GB - keep 6 GB+ free: run Free Up Space"
 else ok "${FREE} GB free of ${TOTAL} GB"; fi
-[ "$TOTAL" -lt 32 ] && warn "Small drive (${TOTAL} GB) - it will fill up over time; 64 GB+ recommended"
+[ "$TOTAL" -lt 32 ] && echo "      small drive: run Free Up Space before any Fedora version upgrade"
+if [ ! -f /etc/abrt/abrt.conf ]; then ok "No crash-report service"
+elif grep -Eq '^\s*MaxCrashReportsSize\s*=\s*([0-9]{1,3})\s*$' /etc/abrt/abrt.conf; then ok "Crash reports capped"
+else warn "Crash reports can grow to 5 GB (Free Up Space caps them)"; fi
 [ "$(gsettings get org.gnome.software download-updates 2> /dev/null)" = "false" ] && ok "No automatic update downloads" || warn "Fedora downloads updates in the background (fills small drives)"
 [ -f /etc/systemd/journald.conf.d/10-size-cap.conf ] && ok "System logs capped" || warn "System logs not capped (Free Up Space sets this)"
 

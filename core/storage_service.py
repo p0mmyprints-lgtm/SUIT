@@ -5,6 +5,7 @@ downloads, package caches, crash reports and logs. This only clears data that
 is re-created or re-downloaded when needed: nothing installed is removed.
 """
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -14,6 +15,7 @@ from core.logger import get_logger
 logger = get_logger("storage")
 
 JOURNAL_CAP_CONF = "/etc/systemd/journald.conf.d/10-size-cap.conf"
+ABRT_CONF = "/etc/abrt/abrt.conf"
 
 
 def disk_usage(path: str = "/") -> tuple[int, int]:
@@ -55,6 +57,16 @@ def free_up_space() -> tuple[bool, str]:
         _sudo("systemctl", "restart", "systemd-journald")
         _sudo("journalctl", "--rotate")
         _sudo("journalctl", "--vacuum-size=100M")
+
+        # 4b. Crash reports: Fedora keeps up to 5 GB by default - cap at 200 MB
+        abrt_conf = Path(ABRT_CONF)
+        if abrt_conf.exists():
+            text = abrt_conf.read_text(encoding="utf-8", errors="replace")
+            if re.search(r"^\s*MaxCrashReportsSize\s*=", text, re.M):
+                _sudo("sed", "-i", r"s/^\s*MaxCrashReportsSize\s*=.*/MaxCrashReportsSize = 200/", ABRT_CONF)
+            else:
+                _sudo("tee", "-a", ABRT_CONF, input_text="\n# Set by PULSE: keep crash reports small\nMaxCrashReportsSize = 200\n")
+            _sudo("systemctl", "try-restart", "abrtd")
 
         # 5. GNOME Software's cache (rebuilt automatically)
         shutil.rmtree(Path.home() / ".cache" / "gnome-software", ignore_errors=True)
