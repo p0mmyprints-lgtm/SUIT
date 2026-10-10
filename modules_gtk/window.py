@@ -99,6 +99,18 @@ class SuitWindow(Adw.ApplicationWindow):
         # switch off its background service on PCs that still have it
         threading.Thread(target=self._retire_boardfx_service, daemon=True, name="retire-boardfx").start()
 
+        # The kiosk browser runs a copy of the in-page extension. Refresh it on every start,
+        # so changes that arrive with "Check for Updates" reach the kiosk (on next kiosk start)
+        threading.Thread(target=self._sync_kiosk_extension, daemon=True, name="sync-kiosk-ext").start()
+
+    @staticmethod
+    def _sync_kiosk_extension():
+        try:
+            from core.kiosk_service import KioskService
+            KioskService.sync_extension_files()
+        except Exception:
+            logger.exception("Failed refreshing the kiosk extension copy")
+
     @staticmethod
     def _retire_boardfx_service():
         unit = Path.home() / ".config" / "systemd" / "user" / "pulse-boardfx.service"
