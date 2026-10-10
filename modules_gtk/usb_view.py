@@ -268,7 +268,11 @@ class UsbView(Adw.NavigationPage):
             self._target_fps = float(fps)
 
             cfg = read_cam_config()
-            cams = cfg.get("devices") or cfg.get("cams", ["/dev/video0", "/dev/video2", "/dev/video4"])
+            cams = cfg.get("devices") or cfg.get("cams") or []
+            if not any(cams):
+                # Don't invent a camera list: it may not match the cameras actually connected
+                self.window.show_toast("Choose your cameras in Autodarts Setup first.")
+                return
             save_cam_config(cams, w, h, fps)
             self.window.show_toast(f"Autodarts set to {w}x{h} @ {fps} FPS")
 

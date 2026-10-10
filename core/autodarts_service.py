@@ -571,6 +571,18 @@ def save_cam_config(
             except Exception:
                 pass
 
+        # The same camera in two slots (e.g. 'native=/dev/video0&...' and '/dev/video0')
+        # makes the second open fail as "busy" and the board never starts. Keep the first,
+        # leave repeats empty: Autodarts then runs on the remaining cameras.
+        seen_devices = set()
+        for idx, entry in enumerate(cams_formatted):
+            device = parse_cam_device(entry) if entry else ""
+            if device and device in seen_devices:
+                logger.warning("Camera %s is selected twice; leaving camera %d empty", device, idx + 1)
+                cams_formatted[idx] = ""
+            elif device:
+                seen_devices.add(device)
+
         cams_str = "[" + ", ".join([f"'{c}'" for c in cams_formatted]) + "]"
         dist_str = "true" if auto_distortion else "false"
 
