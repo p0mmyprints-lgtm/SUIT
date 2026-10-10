@@ -101,8 +101,6 @@ class SuitWindow(Adw.ApplicationWindow):
         def _bg_prewarm():
             time.sleep(0.4)  # Let main menu render smoothly first
             try:
-                # Pre-import heavy native C extensions in background thread
-                import cv2  # noqa: F401
                 from modules_gtk.camera_focus_view import CameraFocusView
 
                 def _init_page():

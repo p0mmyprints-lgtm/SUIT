@@ -1,6 +1,4 @@
 evdev==1.7.1
 qrcode
-opencv-python
-numpy
 
 websockets

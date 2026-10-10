@@ -27,7 +27,6 @@ sudo dnf install -y --setopt=install_weak_deps=False \
     python3-pyserial \
     python3-websockets \
     python3-qrcode \
-    python3-opencv \
     vte291-gtk4 \
     git
 

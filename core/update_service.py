@@ -176,23 +176,25 @@ class UpdateService:
 
     @classmethod
     def ensure_dependencies(cls) -> None:
-        """Check for essential packages like python3-opencv and install if missing."""
+        """After an update, install the GTK4 terminal component (Vte) if it's missing:
+        the Autodarts screen embeds the board console with it."""
         try:
-            import cv2  # noqa: F401
-            import numpy  # noqa: F401
-        except ImportError:
+            import gi
+            gi.require_version("Vte", "3.91")
+            from gi.repository import Vte  # noqa: F401
+        except (ImportError, ValueError):
             try:
                 from core.privileges import check_sudo_privileges
                 if check_sudo_privileges():
-                    logger.info("Installing missing python3-opencv package via DNF")
+                    logger.info("Installing missing vte291-gtk4 package via DNF")
                     subprocess.run(
-                        ["sudo", "dnf", "install", "-y", "--setopt=install_weak_deps=False", "python3-opencv"],
+                        ["sudo", "dnf", "install", "-y", "--setopt=install_weak_deps=False", "vte291-gtk4"],
                         capture_output=True,
                         text=True,
                         timeout=180
                     )
             except Exception:
-                logger.exception("Failed installing python3-opencv during update")
+                logger.exception("Failed installing vte291-gtk4")
 
     @classmethod
     def restart_application(cls, project_dir: Path | None = None):
