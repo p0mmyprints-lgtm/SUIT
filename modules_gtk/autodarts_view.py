@@ -232,7 +232,7 @@ class AutodartsView(Adw.NavigationPage):
             self.terminal.spawn_async(
                 pty_flags=Vte.PtyFlags.DEFAULT,
                 working_directory=os.path.expanduser("~"),
-                argv=[binary],
+                argv=["/usr/bin/env", "-u", "OMP_NUM_THREADS", binary],
                 envv=[],
                 spawn_flags=GLib.SpawnFlags.DEFAULT,
                 child_setup=None,

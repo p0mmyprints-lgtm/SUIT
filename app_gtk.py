@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
+import os
 import sys
 from pathlib import Path
+
+# OpenCV pulls in OpenBLAS, which reserves a work area for every thread it might
+# use: about 16 GB of address space. Starting any program from PULSE (e.g. the
+# Autodarts console) then fails with "Cannot allocate memory" on PCs with less
+# RAM + swap than that. PULSE only uses OpenCV for camera sharpness, so one
+# thread is plenty. Must be set before anything imports cv2.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 # Add project root to path
 BASE_DIR = Path(__file__).resolve().parent
