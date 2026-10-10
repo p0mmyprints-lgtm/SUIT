@@ -99,6 +99,10 @@ fi
 
 echo "=== 5/5 Running the PULSE installer"
 cd "$DIR" && bash install.sh
+# The desktop wallpaper PULSE set lives in ~/.local/share/suit, which was backed up
+# above: put the image back so the desktop doesn't fall back to Fedora's default
+mkdir -p "$HOME/.local/share/suit"
+cp "$DIR/assets/wallpaper_stealth_grey_pattern_ultrasubtle.png" "$HOME/.local/share/suit/" 2> /dev/null
 
 echo
 echo "=== DONE"
