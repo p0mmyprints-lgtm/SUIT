@@ -18,7 +18,9 @@
         "http://localhost:3180/*",
         "http://127.0.0.1:3180/*",
         "http://*.autodarts.direct:3181/*",
-        "https://*.autodarts.direct:3181/*"
+        "https://*.autodarts.direct:3181/*",
+        "http://localhost:3182/*",
+        "http://127.0.0.1:3182/*"
       ],
       "js": [
         "content.js"

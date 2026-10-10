@@ -8,7 +8,11 @@ import websockets
 from core.boardfx_service import BoardFXService, BAUD_RATE
 
 
-AUTODARTS_EVENTS = "ws://localhost:3180/api/events"
+def autodarts_events_url() -> str:
+    """The board's live event stream. Looked up each time: v1 and most v2 boards
+    use port 3180, some v2 installs use 3182."""
+    from core.autodarts_service import get_autodarts_port
+    return f"ws://localhost:{get_autodarts_port()}/api/events"
 
 EFFECT_IDS = {
     "Solid": 0,
@@ -198,15 +202,16 @@ class BoardFXRuntime:
                     "Connecting to Autodarts events..."
                 )
 
+                events_url = autodarts_events_url()
                 async with websockets.connect(
-                    AUTODARTS_EVENTS,
+                    events_url,
                     ping_interval=20,
                     ping_timeout=20,
                 ) as websocket:
 
                     logger.info(
                         "Connected to Autodarts at %s",
-                        AUTODARTS_EVENTS,
+                        events_url,
                     )
 
                     async for message in websocket:

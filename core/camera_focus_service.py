@@ -17,6 +17,12 @@ from core.logger import get_logger
 logger = get_logger("camera_focus")
 
 
+class LightingState(Enum):
+    TOO_DARK = "too_dark"
+    OPTIMAL = "optimal"
+    OVEREXPOSED = "overexposed"
+
+
 class FocusTrend(Enum):
     SHARPENING = "sharpening"
     STABLE = "stable"
@@ -32,12 +38,14 @@ class FocusAnalysis:
     focal_line_y: int
     bullseye: tuple[int, int]
     target_name: str = "Furthest Double"
+    lighting_state: LightingState = LightingState.OPTIMAL
 
 
 class CameraFocusService:
     def __init__(self):
         self.cap: cv2.VideoCapture | None = None
         self.current_device: str | None = None
+        self.current_cam_uri: str | None = None
         self.peak_score: float = 0.0
         self.last_score: float = 0.0
         self.last_bullseye: tuple[int, int] | None = None
@@ -46,40 +54,73 @@ class CameraFocusService:
         self._accum_zoom_crop: np.ndarray | None = None
         self._cam_lock = threading.Lock()
 
-    def start_camera(self, dev_path: str, width: int = 1280, height: int = 960) -> bool:
-        """Open raw V4L2 camera device for high-framerate capture."""
+    def start_camera(self, dev_path: str, width: int = 1280, height: int = 960, retries: int = 3, uri: str | None = None) -> bool:
+        """Open raw V4L2 camera device for high-framerate capture with retry backoff."""
         with self._cam_lock:
             self._stop_camera_unlocked()
             self.reset_peak()
-            try:
-                logger.info("Opening camera device %s (%dx%d)", dev_path, width, height)
-                self.cap = cv2.VideoCapture(dev_path, cv2.CAP_V4L2)
-                if not self.cap.isOpened():
-                    # Fallback to default backend
-                    self.cap = cv2.VideoCapture(dev_path)
-                
-                if not self.cap.isOpened():
-                    logger.error("Failed to open camera device %s", dev_path)
-                    return False
+            self.last_bullseye = None
+            self.last_target_roi = None
 
-                # Configure high-speed MJPG stream to preserve USB bandwidth
-                self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*"MJPG"))
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                self.current_device = dev_path
-                return True
-            except Exception:
-                logger.exception("Exception while opening camera %s", dev_path)
+            import os, time
+            from core.autodarts_service import parse_cam_device
+
+            target_dev = parse_cam_device(dev_path)
+            if not target_dev or not os.path.exists(target_dev):
+                logger.warning("Camera device path does not exist: %s (resolved from %s)", target_dev, dev_path)
                 return False
+
+            self.current_cam_uri = uri or (dev_path if "location=" in dev_path or "serial=" in dev_path else None)
+
+            for attempt in range(retries):
+                try:
+                    logger.info("Opening camera device %s (%dx%d) [attempt %d/%d]", target_dev, width, height, attempt + 1, retries)
+                    cap = cv2.VideoCapture(target_dev, cv2.CAP_V4L2)
+                    if not cap.isOpened():
+                        cap.release()
+                        cap = cv2.VideoCapture(target_dev)
+
+                    # Also try numeric index fallback if target is /dev/videoX
+                    if not cap.isOpened() and target_dev.startswith("/dev/video"):
+                        try:
+                            idx = int(target_dev.replace("/dev/video", ""))
+                            cap.release()
+                            cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+                            if not cap.isOpened():
+                                cap.release()
+                                cap = cv2.VideoCapture(idx)
+                        except Exception:
+                            pass
+
+                    if cap.isOpened():
+                        # Configure high-speed MJPG stream to preserve USB bandwidth
+                        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc(*"MJPG"))
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                        self.cap = cap
+                        self.current_device = target_dev
+                        return True
+                    else:
+                        cap.release()
+                except Exception:
+                    logger.exception("Exception while opening camera %s", target_dev)
+
+                if attempt < retries - 1:
+                    time.sleep(0.3)
+
+            logger.error("Failed to open camera device %s after %d attempts", target_dev, retries)
+            return False
 
     def read_frame(self) -> tuple[bool, np.ndarray | None]:
         """Read a single raw frame from the active camera."""
         with self._cam_lock:
-            if not self.cap or not self.cap.isOpened():
+            if self.cap is None or not self.cap.isOpened():
                 return False, None
             try:
                 ret, frame = self.cap.read()
-                return ret, frame
+                if ret and frame is not None and frame.size > 0:
+                    return True, frame
+                return False, None
             except Exception:
                 logger.exception("Error reading frame from camera")
                 return False, None
@@ -184,6 +225,46 @@ class CameraFocusService:
         resized = cv2.resize(render_crop, out_size, interpolation=cv2.INTER_LINEAR)
         return cv2.cvtColor(resized, cv2.COLOR_BGR2BGRA)
 
+    def load_calibration_homography(self, width: int, height: int) -> np.ndarray | None:
+        """Load 3x3 homography matrix from ~/.config/autodarts/calibration.json for active camera."""
+        try:
+            from pathlib import Path
+            import json
+            cal_file = Path.home() / ".config" / "autodarts" / "calibration.json"
+            if not cal_file.exists():
+                return None
+            cal_data = json.loads(cal_file.read_text(encoding="utf-8"))
+            cams = cal_data.get("cameras", {})
+
+            target_key = None
+            if self.current_cam_uri:
+                for k in cams.keys():
+                    if k in self.current_cam_uri or self.current_cam_uri in k:
+                        target_key = k
+                        break
+            if not target_key and self.current_device:
+                from core.autodarts_service import read_cam_config, parse_cam_device
+                cfg = read_cam_config()
+                for raw_d in cfg.get("devices", []):
+                    if raw_d and parse_cam_device(raw_d) == self.current_device:
+                        for k in cams.keys():
+                            if k in raw_d or raw_d in k:
+                                target_key = k
+                                break
+                        if target_key:
+                            break
+
+            if not target_key:
+                return None
+
+            res_key = f"{width}x{height}"
+            cam_entry = cams.get(target_key, {})
+            if res_key in cam_entry and "homography" in cam_entry[res_key]:
+                return np.array(cam_entry[res_key]["homography"]).reshape(3, 3)
+        except Exception:
+            logger.debug("Failed loading calibration homography", exc_info=True)
+        return None
+
     def locate_bullseye(self, image: np.ndarray, existing_calib: dict | None = None) -> tuple[int, int]:
         """Locate Bullseye coordinates using concentric red/green geometry or calibration."""
         h, w = image.shape[:2]
@@ -239,36 +320,122 @@ class CameraFocusService:
             self.last_bullseye = best_bull
             return best_bull
 
+        # Try Autodarts v2 homography calibration for bullseye (canonical 500, 500)
+        h_mat = self.load_calibration_homography(w, h)
+        if h_mat is not None:
+            try:
+                h_inv = np.linalg.inv(h_mat)
+                b = h_inv @ np.array([500.0, 500.0, 1.0])
+                calib_bull = (int(b[0] / b[2]), int(b[1] / b[2]))
+                if 0 < calib_bull[0] < w and 0 < calib_bull[1] < h:
+                    self.last_bullseye = calib_bull
+                    return calib_bull
+            except Exception:
+                pass
+
         # Fallback to cached or standard center
         if self.last_bullseye:
             return self.last_bullseye
-        return (int(0.5 * w), int(0.42 * h))
+        return (int(0.5 * w), int(0.45 * h))
 
     def get_target_roi(
         self, image: np.ndarray, bullseye: tuple[int, int], existing_calib: dict | None = None
     ) -> tuple[int, int, int, int]:
-        """Calculate the bounding box of the furthest double field at the top of the board."""
+        """Calculate bounding box centered directly on the furthest double field."""
         h, w = image.shape[:2]
         bx, by = bullseye
 
+        # 1. Calibration target prediction (from existing_calib or calibration.json homography)
+        calib_target = None
         if existing_calib and "doubleOuters" in existing_calib:
             outers = existing_calib["doubleOuters"]
             if outers and len(outers) >= 20:
-                # Furthest segment is at minimum y
                 top_pt = min(outers, key=lambda p: p[1])
-                tx, ty = int(top_pt[0]), int(top_pt[1])
-                roi_w = 180
-                roi_h = 50
-                x = max(0, min(w - roi_w, tx - roi_w // 2))
-                y = max(0, min(h - roi_h, ty - 10))
-                self.last_target_roi = (x, y, roi_w, roi_h)
-                return self.last_target_roi
+                calib_target = (int(top_pt[0]), int(top_pt[1]))
+        elif existing_calib and "homography" in existing_calib:
+            try:
+                h_mat = np.array(existing_calib["homography"]).reshape(3, 3)
+                h_inv = np.linalg.inv(h_mat)
+                pts = [
+                    (h_inv @ np.array([500.0 + 323.0 * math.cos(math.radians(deg)),
+                                      500.0 + 323.0 * math.sin(math.radians(deg)), 1.0]))
+                    for deg in range(0, 360, 2)
+                ]
+                norm_pts = [(p[0] / p[2], p[1] / p[2]) for p in pts]
+                top_pt = min(norm_pts, key=lambda p: p[1])
+                calib_target = (int(top_pt[0]), int(top_pt[1]))
+            except Exception:
+                pass
 
-        # Top double is directly above bullseye along the vertical perspective tilt axis
-        roi_w = 180
-        roi_h = 50
-        x = max(0, min(w - roi_w, bx - roi_w // 2))
-        y = max(0, min(h - roi_h, by - 180))
+        if calib_target is None:
+            h_mat = self.load_calibration_homography(w, h)
+            if h_mat is not None:
+                try:
+                    h_inv = np.linalg.inv(h_mat)
+                    pts = [
+                        (h_inv @ np.array([500.0 + 323.0 * math.cos(math.radians(deg)),
+                                          500.0 + 323.0 * math.sin(math.radians(deg)), 1.0]))
+                        for deg in range(0, 360, 2)
+                    ]
+                    norm_pts = [(p[0] / p[2], p[1] / p[2]) for p in pts]
+                    top_pt = min(norm_pts, key=lambda p: p[1])
+                    calib_target = (int(top_pt[0]), int(top_pt[1]))
+                except Exception:
+                    pass
+
+        # 2. Dynamic CV contour detection on actual colored double field wire/segment
+        cv_target = None
+        try:
+            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+            mask_r = cv2.inRange(hsv, (0, 70, 70), (14, 255, 255)) | cv2.inRange(hsv, (166, 70, 70), (180, 255, 255))
+            mask_g = cv2.inRange(hsv, (35, 60, 60), (88, 255, 255))
+
+            mask_upper = np.zeros_like(mask_r)
+            mask_upper[:by, :] = 255
+            search_mask = cv2.bitwise_and(mask_r | mask_g, mask_upper)
+
+            cnts, _ = cv2.findContours(search_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            min_dist = 0.150 * h
+            max_dist = 0.210 * h
+
+            candidates = []
+            for c in cnts:
+                area = cv2.contourArea(c)
+                if 80 < area < 3500:
+                    M = cv2.moments(c)
+                    if M["m00"] > 0:
+                        cx = M["m10"] / M["m00"]
+                        cy = M["m01"] / M["m00"]
+                        dist = math.hypot(cx - bx, cy - by)
+                        if min_dist <= dist <= max_dist and cy < (by - 50):
+                            candidates.append((cy, cx, dist, area))
+
+            if candidates:
+                if calib_target:
+                    # Choose contour closest to calibration prediction
+                    candidates.sort(key=lambda item: math.hypot(item[1] - calib_target[0], item[0] - calib_target[1]))
+                else:
+                    # Topmost candidate in camera image
+                    candidates.sort(key=lambda item: item[0])
+                cv_target = (int(candidates[0][1]), int(candidates[0][0]))
+        except Exception:
+            pass
+
+        # 3. Target selection with priority: CV detected contour > Calibration target > Geometric fallback
+        if cv_target:
+            target_x, target_y = cv_target
+        elif calib_target:
+            target_x, target_y = calib_target
+        else:
+            exp_dist = int(0.187 * h)
+            target_x = bx
+            target_y = max(25, by - exp_dist)
+
+        # Center the target ROI bounding box directly on the target coordinate
+        roi_w = 160
+        roi_h = 46
+        x = max(0, min(w - roi_w, int(target_x - roi_w // 2)))
+        y = max(0, min(h - roi_h, int(target_y - roi_h // 2)))
         self.last_target_roi = (x, y, roi_w, roi_h)
         return self.last_target_roi
 
@@ -297,6 +464,20 @@ class CameraFocusService:
         blended = 0.5 * norm_lap + 0.5 * norm_ten
         return float(np.clip(blended * 100.0, 0.0, 100.0))
 
+    def check_lighting_quality(self, roi: np.ndarray) -> LightingState:
+        """Evaluate if the target patch has acceptable exposure for sharpness scoring."""
+        if roi is None or roi.size == 0:
+            return LightingState.TOO_DARK
+            
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if len(roi.shape) == 3 else roi
+        mean_luma = float(np.mean(gray))
+        
+        if mean_luma < 45.0:
+            return LightingState.TOO_DARK
+        elif mean_luma > 185.0:
+            return LightingState.OVEREXPOSED
+        return LightingState.OPTIMAL
+
     def find_dynamic_focal_line(
         self, image: np.ndarray, bullseye: tuple[int, int], target_roi: tuple[int, int, int, int]
     ) -> int:
@@ -313,7 +494,13 @@ class CameraFocusService:
         # Extract target ROI patch and compute sharpness score
         rx, ry, rw, rh = target_roi
         patch = image[ry : ry + rh, rx : rx + rw]
-        score = self.compute_sharpness(patch)
+        
+        lighting_state = self.check_lighting_quality(patch)
+        
+        if lighting_state != LightingState.OPTIMAL:
+            score = 0.0
+        else:
+            score = self.compute_sharpness(patch)
 
         # Locate current focal line
         focal_line_y = self.find_dynamic_focal_line(image, bullseye, target_roi)
@@ -341,4 +528,5 @@ class CameraFocusService:
             focal_line_y=focal_line_y,
             bullseye=bullseye,
             target_name="Furthest Double",
+            lighting_state=lighting_state,
         )

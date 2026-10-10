@@ -1,4 +1,3 @@
-from pathlib import Path
 import subprocess
 import gi
 gi.require_version("Gio", "2.0")
@@ -7,24 +6,12 @@ from core.logger import get_logger
 
 logger = get_logger("systemd")
 
-# Autodarts v2 runs as a per-user service (systemctl --user); v1 ran system-wide.
-# A unit with a file in the user's own unit folder is managed on the user's bus.
-USER_UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
-
-
-def _is_user_unit(unit_name: str) -> bool:
-    return (USER_UNIT_DIR / unit_name).exists()
-
-
-def _bus_type(user: bool):
-    return Gio.BusType.SESSION if user else Gio.BusType.SYSTEM
-
-
 class SystemdService:
     @staticmethod
-    def _get_manager_proxy(user: bool = False) -> Gio.DBusProxy | None:
+    def _get_manager_proxy(scope: str = "system") -> Gio.DBusProxy | None:
         try:
-            bus = Gio.bus_get_sync(_bus_type(user), None)
+            bus_type = Gio.BusType.SESSION if scope == "user" else Gio.BusType.SYSTEM
+            bus = Gio.bus_get_sync(bus_type, None)
             return Gio.DBusProxy.new_sync(
                 bus,
                 Gio.DBusProxyFlags.NONE,
@@ -35,14 +22,25 @@ class SystemdService:
                 None
             )
         except Exception:
-            logger.exception("Failed to connect to systemd DBus Manager on %s bus", "user" if user else "system")
+            logger.exception(f"Failed to connect to systemd DBus Manager on {scope} bus")
             return None
 
     @classmethod
-    def get_status(cls, unit_name: str) -> dict:
+    def get_status(cls, unit_name: str, scope: str = "auto") -> dict:
+        if scope == "auto":
+            user_status = cls._get_status_scoped(unit_name, scope="user")
+            if user_status.get("active_state") != "nofile":
+                return user_status
+            return cls._get_status_scoped(unit_name, scope="system")
+        return cls._get_status_scoped(unit_name, scope=scope)
+
+    # Alias for backwards compatibility
+    get_unit_status = get_status
+
+    @classmethod
+    def _get_status_scoped(cls, unit_name: str, scope: str = "system") -> dict:
         result = {"active_state": "nofile", "sub_state": "dead", "unit_file_state": "missing"}
-        user = _is_user_unit(unit_name)
-        proxy = cls._get_manager_proxy(user)
+        proxy = cls._get_manager_proxy(scope=scope)
         if not proxy:
             return result
 
@@ -73,7 +71,8 @@ class SystemdService:
             return result
 
         try:
-            bus = Gio.bus_get_sync(_bus_type(user), None)
+            bus_type = Gio.BusType.SESSION if scope == "user" else Gio.BusType.SYSTEM
+            bus = Gio.bus_get_sync(bus_type, None)
             unit_proxy = Gio.DBusProxy.new_sync(
                 bus,
                 Gio.DBusProxyFlags.NONE,
@@ -99,14 +98,52 @@ class SystemdService:
                 result["sub_state"] = sub.unpack() if sub else "dead"
                 result["unit_file_state"] = unit_file.unpack() if unit_file else "unknown"
         except Exception:
-            logger.exception(f"Failed querying properties for {unit_name}")
+            logger.exception(f"Failed querying properties for {unit_name} on {scope} bus")
 
         return result
 
     @classmethod
-    def _execute_unit_action(cls, action: str, unit_name: str, mode: str = "replace") -> bool:
-        user = _is_user_unit(unit_name)
-        proxy = cls._get_manager_proxy(user)
+    def reset_failed(cls, unit_name: str, scope: str = "auto") -> bool:
+        """Reset failed state of a unit to unblock rate-limiting or previous crashes."""
+        target_scope = ("user" if cls._get_status_scoped(unit_name, scope="user").get("active_state") != "nofile" else "system") if scope == "auto" else scope
+
+        proxy = cls._get_manager_proxy(scope=target_scope)
+        if proxy:
+            try:
+                proxy.call_sync(
+                    "ResetFailedUnit",
+                    GLib.Variant("(s)", (unit_name,)),
+                    Gio.DBusCallFlags.ALLOW_INTERACTIVE_AUTHORIZATION,
+                    1500,
+                    None
+                )
+                logger.info(f"Reset failed state for {unit_name} via {target_scope} DBus")
+                return True
+            except Exception:
+                pass
+
+        try:
+            cmd = ["systemctl", "--user", "reset-failed", unit_name] if target_scope == "user" else ["sudo", "systemctl", "reset-failed", unit_name]
+            subprocess.run(cmd, capture_output=True, timeout=5)
+            logger.info(f"Reset failed state for {unit_name} via {target_scope} systemctl")
+            return True
+        except Exception:
+            return False
+
+    @classmethod
+    def _execute_unit_action(cls, action: str, unit_name: str, mode: str = "replace", scope: str = "auto") -> bool:
+        target_scope = scope
+        if scope == "auto":
+            status_user = cls._get_status_scoped(unit_name, scope="user")
+            if status_user.get("active_state") != "nofile":
+                target_scope = "user"
+            else:
+                target_scope = "system"
+
+        if action in ("start", "restart"):
+            cls.reset_failed(unit_name, scope=target_scope)
+
+        proxy = cls._get_manager_proxy(scope=target_scope)
         dbus_method = {"start": "StartUnit", "stop": "StopUnit", "restart": "RestartUnit"}.get(action)
         if proxy and dbus_method:
             try:
@@ -117,39 +154,43 @@ class SystemdService:
                     3000,
                     None
                 )
-                logger.info(f"Successfully executed {action} for {unit_name} via DBus")
+                logger.info(f"Successfully executed {action} for {unit_name} via {target_scope} DBus")
                 return True
             except Exception as e:
-                logger.warning(f"DBus {action} failed for {unit_name}: {e}. Trying systemctl fallback...")
+                logger.warning(f"DBus {action} failed for {unit_name} ({target_scope}): {e}. Trying CLI fallback...")
 
-        # Fallback: systemctl --user for user units, passwordless sudo for system units
+        # Fallback to systemctl CLI
         try:
-            cmd = ["systemctl", "--user", action, unit_name] if user else ["sudo", "systemctl", action, unit_name]
+            if target_scope == "user":
+                cmd = ["systemctl", "--user", action, unit_name]
+            else:
+                cmd = ["sudo", "systemctl", action, unit_name]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if res.returncode == 0:
-                logger.info(f"Successfully executed {action} for {unit_name} via {' '.join(cmd[:2])}")
+                logger.info(f"Successfully executed {action} for {unit_name} via {target_scope} systemctl")
                 return True
             else:
-                logger.error(f"{' '.join(cmd)} failed: {res.stderr.strip()}")
+                logger.error(f"{target_scope} systemctl {action} {unit_name} failed: {res.stderr.strip()}")
                 return False
         except Exception:
-            logger.exception(f"Failed to execute {action} for {unit_name} via systemctl")
+            logger.exception(f"Failed to execute {action} for {unit_name} via {target_scope} systemctl")
             return False
 
     @classmethod
-    def start_unit(cls, unit_name: str, mode: str = "replace") -> bool:
-        return cls._execute_unit_action("start", unit_name, mode)
+    def start_unit(cls, unit_name: str, mode: str = "replace", scope: str = "auto") -> bool:
+        return cls._execute_unit_action("start", unit_name, mode, scope=scope)
 
     @classmethod
-    def stop_unit(cls, unit_name: str, mode: str = "replace") -> bool:
-        return cls._execute_unit_action("stop", unit_name, mode)
+    def stop_unit(cls, unit_name: str, mode: str = "replace", scope: str = "auto") -> bool:
+        return cls._execute_unit_action("stop", unit_name, mode, scope=scope)
 
     @classmethod
-    def restart_unit(cls, unit_name: str, mode: str = "replace") -> bool:
-        return cls._execute_unit_action("restart", unit_name, mode)
+    def restart_unit(cls, unit_name: str, mode: str = "replace", scope: str = "auto") -> bool:
+        return cls._execute_unit_action("restart", unit_name, mode, scope=scope)
 
     @classmethod
-    def is_unit_active(cls, unit_name: str) -> bool:
+    def is_unit_active(cls, unit_name: str, scope: str = "auto") -> bool:
         """Check if a systemd unit is currently in active state."""
-        status = cls.get_status(unit_name)
+        status = cls.get_status(unit_name, scope=scope)
         return status.get("active_state") == "active"
+

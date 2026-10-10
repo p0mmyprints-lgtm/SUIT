@@ -10,7 +10,8 @@
   const isLocalConfigHost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
   const isAutodartsDirect = window.location.hostname.endsWith(".autodarts.direct");
   const isConfigHost = isLocalConfigHost || isAutodartsDirect;
-  const isConfigPort = (isLocalConfigHost && window.location.port === "3180") ||
+  // Board config pages: v2 on localhost:3180 (or 3182), v1 Board Manager on *.autodarts.direct:3181
+  const isConfigPort = (isLocalConfigHost && (window.location.port === "3180" || window.location.port === "3182")) ||
                        (isAutodartsDirect && window.location.port === "3181");
 
   // =========================================================================
@@ -284,15 +285,22 @@
     // Wire Item Events
     document.getElementById("suit-item-board-config").addEventListener("click", () => {
       closePopover();
-      try {
-        chrome.runtime.sendMessage({ action: "open_tab", url: "http://localhost:3180/config" }, (resp) => {
-          if (chrome.runtime.lastError || (resp && resp.status === "error")) {
-            window.open("http://localhost:3180/config", "_blank");
-          }
-        });
-      } catch (e) {
-        window.open("http://localhost:3180/config", "_blank");
-      }
+      const openConfigUrl = (url) => {
+        try {
+          chrome.runtime.sendMessage({ action: "open_tab", url: url }, (resp) => {
+            if (chrome.runtime.lastError || (resp && resp.status === "error")) {
+              window.open(url, "_blank");
+            }
+          });
+        } catch (e) {
+          window.open(url, "_blank");
+        }
+      };
+
+      // Try default port 3180 first, fallback to 3182
+      fetch("http://localhost:3180/api/state", { method: "GET", mode: "no-cors", cache: "no-cache" })
+        .then(() => openConfigUrl("http://localhost:3180/config"))
+        .catch(() => openConfigUrl("http://localhost:3182/config"));
     });
 
     const lightBtn = document.getElementById("suit-item-light");
