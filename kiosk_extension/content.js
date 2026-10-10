@@ -206,19 +206,8 @@
     popover = document.createElement("div");
     popover.id = "suit-kiosk-popover";
     popover.innerHTML = `
-      <!-- AUTODARTS SECTION -->
-      <div class="suit-popover-section-title">Autodarts</div>
-      <button class="suit-popover-item" id="suit-item-board-config">
-        <div class="suit-item-icon suit-icon-config">${SVG_CONFIG}</div>
-        <div class="suit-item-text">
-          <span class="suit-item-label">Board Configuration</span>
-          <span class="suit-item-desc">Calibration & settings</span>
-        </div>
-      </button>
-
       <!-- ACCESSORIES / DARTBOARD LIGHT (Initially hidden until confirmed enabled) -->
       <div id="suit-section-light" style="display: none;">
-        <div class="suit-popover-divider"></div>
         <div class="suit-popover-section-title">Accessories</div>
         <button class="suit-popover-item" id="suit-item-light">
           <div class="suit-item-icon suit-icon-light" id="suit-light-icon">${SVG_LIGHTBULB}</div>
@@ -228,10 +217,8 @@
           </div>
           <div class="suit-light-badge suit-light-off" id="suit-light-badge">OFF</div>
         </button>
+        <div class="suit-popover-divider"></div>
       </div>
-
-      <!-- DIVIDER -->
-      <div class="suit-popover-divider"></div>
 
       <!-- SYSTEM SECTION -->
       <div class="suit-popover-section-title">System</div>
@@ -283,26 +270,6 @@
     document.body.appendChild(popover);
 
     // Wire Item Events
-    document.getElementById("suit-item-board-config").addEventListener("click", () => {
-      closePopover();
-      const openConfigUrl = (url) => {
-        try {
-          chrome.runtime.sendMessage({ action: "open_tab", url: url }, (resp) => {
-            if (chrome.runtime.lastError || (resp && resp.status === "error")) {
-              window.open(url, "_blank");
-            }
-          });
-        } catch (e) {
-          window.open(url, "_blank");
-        }
-      };
-
-      // Try default port 3180 first, fallback to 3182
-      fetch("http://localhost:3180/api/state", { method: "GET", mode: "no-cors", cache: "no-cache" })
-        .then(() => openConfigUrl("http://localhost:3180/config"))
-        .catch(() => openConfigUrl("http://localhost:3182/config"));
-    });
-
     const lightBtn = document.getElementById("suit-item-light");
     if (lightBtn) {
       lightBtn.addEventListener("click", () => {

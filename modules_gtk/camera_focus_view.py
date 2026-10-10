@@ -93,7 +93,6 @@ class CameraFocusView(Adw.NavigationPage):
         self._refresh_buttons()
 
     def _refresh_buttons(self):
-        self.btn_done.set_sensitive(self.paused_autodarts)
         if self.paused_autodarts:
             self.lbl_status.set_text(
                 "Autodarts is paused. When you have finished, close the Focus Station tab "
@@ -137,6 +136,8 @@ class CameraFocusView(Adw.NavigationPage):
         run_async(lambda: SystemdService.start_unit(SERVICE_NAME), on_done=on_done)
 
     def _on_done_clicked(self, btn):
+        # Start Autodarts even if PULSE didn't pause it (it may have been stopped already)
+        self.paused_autodarts = True
         self._resume_autodarts()
         self.window.nav_view.pop()
 
