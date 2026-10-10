@@ -227,6 +227,16 @@ class SystemView(Adw.NavigationPage):
         self.row_debloat.add_suffix(self.box_debloat)
         self.grp_apps.add(self.row_debloat)
 
+        # Free up disk space (small drives fill up with update downloads, caches and logs)
+        self.row_space = Adw.ActionRow(title="Free Up Space", subtitle=self._space_subtitle())
+        self.row_space.set_subtitle_lines(0)
+        self.btn_space = create_button_with_icon(
+            "user-trash-full-symbolic", "Clean Up", "secondary-btn compact-btn", height=38)
+        self.btn_space.set_valign(Gtk.Align.CENTER)
+        self.btn_space.connect("clicked", self._on_free_space_clicked)
+        self.row_space.add_suffix(self.btn_space)
+        self.grp_apps.add(self.row_space)
+
         # 2. Chromium Browser
         self.row_chromium = Adw.ActionRow(
             title="Chromium Web Browser",
@@ -732,6 +742,26 @@ class SystemView(Adw.NavigationPage):
 
         dialog.connect("response", on_response)
         dialog.present(self.window)
+
+    def _space_subtitle(self) -> str:
+        from core.storage_service import disk_usage, human
+        total, free = disk_usage()
+        low = "Low on space! " if free < 2 * 1024 ** 3 else ""
+        return (f"{low}{human(free)} free of {human(total)}. Clears leftover update downloads, "
+                "caches, crash reports and old logs. Nothing installed is removed.")
+
+    def _on_free_space_clicked(self, btn):
+        from core.storage_service import free_up_space
+        btn.set_sensitive(False)
+        self.row_space.set_subtitle("Cleaning up - this can take a minute...")
+
+        def on_done(res):
+            btn.set_sensitive(True)
+            ok, msg = res if isinstance(res, tuple) else (False, str(res))
+            self.window.show_toast(msg)
+            self.row_space.set_subtitle(self._space_subtitle())
+
+        run_async(free_up_space, on_done=on_done)
 
     def _on_debloat_action_clicked(self, btn):
         details = SystemService.get_installed_bloatware_details(include_all=True)
