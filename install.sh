@@ -22,7 +22,6 @@ sudo dnf install -y --setopt=install_weak_deps=False \
     python3 \
     python3-gobject \
     libadwaita \
-    python3-dbus \
     python3-evdev \
     python3-qrcode \
     vte291-gtk4 \
