@@ -247,6 +247,18 @@ class RotationView(Adw.NavigationPage):
             touch_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
             touch_box.set_valign(Gtk.Align.CENTER)
             card.append(touch_box)
+            # Screens differ: some rotate touch by themselves (choose None), others need
+            # PULSE to do it. No default suits both, so tell the user how to check.
+            touch_hint = Gtk.Label(
+                label="After applying, tap the four corners. If taps land in the wrong place "
+                      "(for example the opposite corner), switch this between None and your "
+                      "touchscreen, then apply again. Some screens turn touch by themselves "
+                      "(use None); others need it set here.",
+                xalign=0, wrap=True,
+            )
+            touch_hint.add_css_class("dim-label")
+            touch_hint.add_css_class("caption")
+            card.append(touch_hint)
 
             touch_icon = Gtk.Image.new_from_icon_name("input-tablet-symbolic")
             touch_icon.set_pixel_size(22)
