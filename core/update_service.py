@@ -153,6 +153,24 @@ class UpdateService:
             )
             if pull_res.returncode != 0:
                 logger.warning("Fast-forward pull failed, attempting hard reset to origin/main: %s", pull_res.stderr.strip())
+
+                def git(*args):
+                    return subprocess.run(["git", *args], cwd=str(target_dir),
+                                          capture_output=True, text=True, timeout=15)
+
+                # Never reset onto something that isn't PULSE: a wrong 'main' once
+                # replaced a working install with an old version that couldn't start.
+                if git("cat-file", "-e", "origin/main:app_gtk.py").returncode != 0:
+                    logger.error("origin/main has no app_gtk.py - refusing to reset onto it")
+                    return False, ("Update stopped: the update on GitHub doesn't look like a complete "
+                                   "PULSE. Nothing was changed. Please contact Pommy Prints.")
+
+                # Keep the current version and any local edits, so nothing is lost
+                git("branch", "-f", "pulse-before-update", "HEAD")
+                if git("status", "--porcelain", "--untracked-files=no").stdout.strip():
+                    git("stash", "push", "-m", "PULSE: local changes saved before update")
+                logger.info("Saved current version as branch 'pulse-before-update'")
+
                 reset_res = subprocess.run(
                     ["git", "reset", "--hard", "origin/main"],
                     cwd=str(target_dir),
