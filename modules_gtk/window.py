@@ -1,3 +1,4 @@
+import subprocess
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
@@ -82,7 +83,6 @@ class SuitWindow(Adw.ApplicationWindow):
         self.kiosk_page = None
         self.system_page = None
         self.usb_page = None
-        self.boardfx_page = None
 
         # Push Main Menu
         self.menu_page = MainMenuView(self)
@@ -94,6 +94,24 @@ class SuitWindow(Adw.ApplicationWindow):
 
         # Background pre-warm heavy dependencies (OpenCV, GStreamer, CameraFocusView)
         self._start_background_prewarm()
+
+        # BoardFX was removed (Tools for Autodarts handles board lighting):
+        # switch off its background service on PCs that still have it
+        threading.Thread(target=self._retire_boardfx_service, daemon=True, name="retire-boardfx").start()
+
+    @staticmethod
+    def _retire_boardfx_service():
+        unit = Path.home() / ".config" / "systemd" / "user" / "pulse-boardfx.service"
+        if not unit.exists():
+            return
+        try:
+            subprocess.run(["systemctl", "--user", "disable", "--now", "pulse-boardfx.service"],
+                           capture_output=True, timeout=20)
+            unit.unlink(missing_ok=True)
+            subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, timeout=20)
+            logger.info("Removed retired BoardFX service")
+        except Exception:
+            logger.exception("Failed removing retired BoardFX service")
 
     def _start_background_prewarm(self):
         """Asynchronously pre-warm heavy dependencies (OpenCV, GStreamer, CameraFocusView)
@@ -259,12 +277,6 @@ class SuitWindow(Adw.ApplicationWindow):
         self.nav_view.push(self.system_page)
         if hasattr(self.system_page, "refresh"):
             self.system_page.refresh()
-
-    def open_boardfx_page(self):
-        if not self.boardfx_page:
-            from modules_gtk.boardfx_view import BoardFXView
-            self.boardfx_page = BoardFXView(self)
-        self.nav_view.push(self.boardfx_page)
 
     def open_usb_page(self):
         if not self.usb_page:

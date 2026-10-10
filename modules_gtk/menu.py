@@ -78,7 +78,6 @@ class MainMenuView(Adw.NavigationPage):
         items = [
             ("btn_system", "preferences-system-symbolic", "System Utilities & Tweaks", "Performance, power, and touch tweaks.", self._open_system, True),
             ("btn_autodarts", "darts-symbolic", "Autodarts Setup", "Board pairing, service, and camera telemetry.", self._open_autodarts, True),
-            ("btn_boardfx", "applications-graphics-symbolic", "BoardFX", "Reactive lighting for Autodarts.", self._open_boardfx, True),
             ("btn_focus", "camera-photo-symbolic", "Camera Focus Tool", "Adjust lens sharpness and alignment.", self._open_focus, True),
             ("btn_touch", "screen-touch-symbolic", "Screen & Touch Manager", "Display rotation and touch calibration.", self._open_rotation, True),
             ("btn_kiosk", "view-fullscreen-symbolic", "Kiosk Mode", "Fullscreen browser autostart and controls.", self._open_kiosk, True),
@@ -162,9 +161,6 @@ class MainMenuView(Adw.NavigationPage):
         logger.debug("Navigating to Autodarts view")
         self.window.open_autodarts_page()
 
-    def _open_boardfx(self):
-        logger.debug("Navigating to BoardFX view")
-        self.window.open_boardfx_page()
 
     def _open_focus(self):
         logger.debug("Navigating to Camera Focus view")
