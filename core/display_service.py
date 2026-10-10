@@ -580,11 +580,18 @@ Comment=Maintain screen and touch rotation on boot
         else:
             cls.write_udev_rule(None, None)
 
-        # 4. Save to SUIT configuration and ensure autostart
+        # 4. Save to SUIT configuration and ensure autostart. The screen's identity is
+        #    saved too, so the setting can follow it if its cable moves to another port.
         config = cls.load_config(config_path=config_path)
+        identity = cls._monitor_identity(connector_name)
+        if identity:
+            for other in [k for k, v in config.items()
+                          if k != connector_name and all(v.get(f) == identity[f] for f in identity)]:
+                del config[other]  # same screen saved under its old port
         config[connector_name] = {
             "rotation": int(rotation_int),
-            "touch_device": touch_device_name or "None"
+            "touch_device": touch_device_name or "None",
+            **identity,
         }
         return cls.save_config(config, config_path=config_path, autostart_path=autostart_path)
 
@@ -692,6 +699,49 @@ Comment=Maintain screen and touch rotation on boot
             return False
 
     @classmethod
+    def _monitor_identity(cls, connector_name: str) -> dict:
+        """Vendor/product/serial of the screen on this port."""
+        state = cls.get_current_mutter_state()
+        if not state:
+            return {}
+        for m_info in state[1]:
+            if m_info[0][0] == connector_name:
+                return {"vendor": m_info[0][1], "product": m_info[0][2], "serial": m_info[0][3]}
+        return {}
+
+    @classmethod
+    def _follow_moved_screens(cls, config: dict, monitors: list, logical_monitors: list) -> dict:
+        """Rotation is saved per port (e.g. DP-2). If a saved port has no screen now, find
+        the same screen on its new port (by vendor/product/serial) and move the setting.
+        Settings saved before identities were stored: with exactly one screen and one
+        saved setting, that screen is assumed to be the one."""
+        connected = [pm[0] for lm in logical_monitors for pm in lm[5]]
+        identities = {m[0][0]: {"vendor": m[0][1], "product": m[0][2], "serial": m[0][3]}
+                      for m in monitors}
+        moved = False
+        for saved_name in list(config):
+            if saved_name in connected:
+                continue
+            settings = config[saved_name]
+            ident = {f: settings.get(f) for f in ("vendor", "product", "serial")}
+            target = None
+            if all(v and v != "unknown" for v in ident.values()):
+                target = next((c for c in connected if c not in config and identities.get(c) == ident), None)
+            if target is None and len(config) == 1 and len(connected) == 1:
+                target = connected[0]
+            if target:
+                logger.info("Screen moved from %s to %s: moving its rotation setting", saved_name, target)
+                config[target] = {**settings, **identities.get(target, {})}
+                del config[saved_name]
+                moved = True
+        if moved:
+            cls.save_config(config)
+            # GNOME's monitors.xml is keyed by port as well: rewrite it for the new port
+            for name, settings in config.items():
+                cls.write_monitors_xml(name, normalize_rotation(settings.get("rotation", 0)))
+        return config
+
+    @classmethod
     def apply_boot_config(cls) -> bool:
         logger.info("Applying saved display and touch configuration from boot autostart")
         config = cls.load_config()
@@ -706,6 +756,9 @@ Comment=Maintain screen and touch rotation on boot
 
         serial, monitors, logical_monitors, properties = state
         needs_refresh = False
+
+        # The screen may have been plugged into a different port since it was set up
+        config = cls._follow_moved_screens(config, monitors, logical_monitors)
 
         for mon_name, settings in config.items():
             target_rot = normalize_rotation(settings.get("rotation", 0))

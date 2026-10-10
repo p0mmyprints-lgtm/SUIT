@@ -142,13 +142,67 @@ class DebloatService:
             logger.debug("Failed moving seahorse to utilities folder")
             return False
 
+    @staticmethod
+    def _pkg_name(nevra: str) -> str:
+        """'gnome-maps-48.0-1.fc44.x86_64' -> 'gnome-maps' (plain names pass through)."""
+        parts = nevra.rsplit("-", 2)
+        return parts[0] if len(parts) == 3 and parts[1][:1].isdigit() else nevra
+
+    @classmethod
+    def _skipped_text(cls, skipped: dict) -> str:
+        return "; ".join(f"{cls._pkg_name(p)} (needed by {', '.join(d[:3])}{'...' if len(d) > 3 else ''})"
+                         for p, d in skipped.items())
+
+    @classmethod
+    def _split_safe_removals(cls, packages: list[str], progress_callback=None) -> tuple[list[str], dict]:
+        """Dry-run removing each package. Keep only those whose removal wouldn't also
+        remove software outside the selection."""
+        selected = {cls._pkg_name(p) for p in packages}
+        safe, skipped = [], {}
+        for i, pkg in enumerate(packages, 1):
+            if progress_callback:
+                progress_callback(0, len(packages), f"Checking {cls._pkg_name(pkg)} ({i}/{len(packages)})...")
+            res = subprocess.run(
+                ["sudo", "-n", "dnf", "remove", "--assumeno",
+                 "--setopt=clean_requirements_on_remove=False", pkg],
+                capture_output=True, text=True, timeout=180, env={**os.environ, "LC_ALL": "C"})
+            output = res.stdout + res.stderr
+            if "Transaction Summary" not in output:
+                # dnf refused to even plan it (e.g. protected packages like gnome-shell need it)
+                logger.info("Keeping %s: dnf can't plan its removal", pkg)
+                skipped[pkg] = ["the system"]
+                continue
+            dependents, in_section = [], False
+            for line in output.splitlines():
+                if line.startswith("Removing dependent packages:"):
+                    in_section = True
+                    continue
+                if in_section:
+                    if line.startswith(" ") and line.strip():
+                        dependents.append(line.split()[0])
+                    else:
+                        in_section = False
+            others = [d for d in dependents if d not in selected]
+            if others:
+                logger.info("Keeping %s: removing it would also remove %s", pkg, ", ".join(others))
+                skipped[pkg] = others
+            else:
+                safe.append(pkg)
+        return safe, skipped
+
     @classmethod
     def debloat_packages(cls, packages: list[str], progress_callback=None) -> tuple[bool, str]:
         if not packages:
             return True, "No packages selected for removal."
 
         try:
-            cmd = ["sudo", "-n", "dnf", "remove", "-y"] + packages
+            # Only remove what was picked: never apps other software needs, and never
+            # extra "unused" packages (that once took PULSE's own camera library).
+            safe, skipped = cls._split_safe_removals(packages, progress_callback)
+            if not safe:
+                return False, "Nothing removed: " + cls._skipped_text(skipped)
+            packages = safe
+            cmd = ["sudo", "-n", "dnf", "remove", "-y", "--setopt=clean_requirements_on_remove=False"] + packages
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -191,6 +245,9 @@ class DebloatService:
                         progress_callback(0, total_items, "Preparing transaction...")
 
             proc.wait()
+            if proc.returncode != 0:
+                logger.error("dnf remove failed with exit code %s", proc.returncode)
+                return False, "Removing apps failed - the system's package tool reported an error. Nothing may have been removed."
 
             if progress_callback:
                 progress_callback(total_items, total_items, "Cleaning Dash favorites and app grid...")
@@ -198,7 +255,10 @@ class DebloatService:
             cls.clean_dash_favorites()
             cls.move_seahorse_to_utilities()
             logger.info("Debloat and Dash cleanup completed successfully")
-            return True, f"Successfully removed {len(packages)} application(s)."
+            msg = f"Removed {len(packages)} app(s)."
+            if skipped:
+                msg += " Kept: " + cls._skipped_text(skipped)
+            return True, msg
         except Exception as e:
             logger.exception("Failed debloating selected packages")
             return False, f"Debloat failed: {e}"
