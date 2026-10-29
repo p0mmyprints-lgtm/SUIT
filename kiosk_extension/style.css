@@ -402,8 +402,10 @@
    ========================================================================== */
 .suit-config-back-btn {
   position: fixed !important;
-  top: 14px !important;
-  left: 16px !important;
+  /* Centred in the Board Manager's top bar, clear of its logo (left) and icons (right) */
+  top: 5px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
   z-index: 999999 !important;
   display: inline-flex !important;
   align-items: center !important;
@@ -432,7 +434,7 @@
 
 .suit-config-back-btn:active {
   background: #1A202C !important; /* Chakra gray.800 */
-  transform: scale(0.97) !important;
+  transform: translateX(-50%) scale(0.97) !important;
 }
 
 .suit-config-back-btn svg {

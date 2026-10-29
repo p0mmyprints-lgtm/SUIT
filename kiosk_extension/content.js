@@ -1,7 +1,8 @@
 // SUIT Kiosk Controls - Content Script
 // Dual Mode:
 // 1. play.autodarts.com: Native header trigger button + sleek anchored dropdown popover
-// 2. localhost:3180: Native Chakra UI dark "← Back to Game" return button
+// 2. localhost:3180 (Board Manager): "← Back to Autodarts" return button
+//    (background.js reopens the board's LAN address on localhost so this matches)
 
 (function () {
   if (window.__suitKioskInitialized) return;
@@ -37,7 +38,7 @@
       btn.className = "suit-config-back-btn";
       btn.innerHTML = `
         ${SVG_ARROW_LEFT}
-        <span>Back to Game</span>
+        <span>Back to Autodarts</span>
       `;
       btn.title = "Close configuration and return to Autodarts";
 
