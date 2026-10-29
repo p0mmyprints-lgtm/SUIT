@@ -495,4 +495,63 @@
   });
 
   observer.observe(document.documentElement, { childList: true, subtree: true });
+
+  // =========================================================================
+  // Board sign-in banner
+  // After an Autodarts update the board's key can be refused: the board looks
+  // fine but games never score. The native host reads Autodarts' log for us.
+  // =========================================================================
+  let signinBusy = false;
+
+  function renderSigninBanner(state) {
+    let banner = document.getElementById("suit-signin-banner");
+    if (state !== "refused" && state !== "unclaimed") {
+      if (banner) banner.remove();
+      return;
+    }
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "suit-signin-banner";
+      banner.innerHTML = `
+        <span id="suit-signin-text"></span>
+        <button id="suit-signin-fix" type="button">Sign In Again</button>
+      `;
+      document.body.appendChild(banner);
+      banner.querySelector("#suit-signin-fix").addEventListener("click", fixSignin);
+    }
+    banner.querySelector("#suit-signin-text").textContent = state === "refused"
+      ? "Your board needs signing in again - games won't score until you do."
+      : "Almost there: sign in and choose your board in the Board Manager.";
+    banner.querySelector("#suit-signin-fix").textContent = state === "refused" ? "Sign In Again" : "Open Board Manager";
+  }
+
+  function checkSignin() {
+    try {
+      chrome.runtime.sendMessage({ action: "board_signin_status" }, (resp) => {
+        if (chrome.runtime.lastError || !resp || resp.status !== "ok") return;
+        renderSigninBanner(resp.state);
+      });
+    } catch (e) {
+      // extension reloaded underneath us
+    }
+  }
+
+  function fixSignin() {
+    if (signinBusy) return;
+    signinBusy = true;
+    showToast("Clearing the old sign-in...", 4000);
+    chrome.runtime.sendMessage({ action: "board_signin_fix" }, (resp) => {
+      signinBusy = false;
+      if (chrome.runtime.lastError || !resp || resp.status !== "ok") {
+        const err = (chrome.runtime.lastError && chrome.runtime.lastError.message) || (resp && resp.error) || "failed";
+        showToast(`Sign-in: ${err}`, 5000);
+        return;
+      }
+      // Board Manager has Autodarts' own sign-in and board picker
+      chrome.runtime.sendMessage({ action: "open_tab", url: "http://localhost:3180/" });
+    });
+  }
+
+  checkSignin();
+  setInterval(checkSignin, 30000);
 })();

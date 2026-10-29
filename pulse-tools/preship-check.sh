@@ -47,8 +47,15 @@ LATEST=$(curl -s -m 5 https://releases.autodarts.com/headless/downloads/latest.s
 if [ -z "$VER" ]; then bad "Not answering on its local API"
 elif [ -n "$LATEST" ] && [ "$VER" != "$LATEST" ]; then warn "Version $VER, latest is $LATEST"
 else ok "Version $VER"; fi
+LASTKEY=$(journalctl --user -u autodarts -n 400 -o cat --no-pager 2> /dev/null | grep -E "credentials were refused|No board credentials|Connected to the Autodarts server|Claimed the board" | tail -1)
+case "$LASTKEY" in
+  *refused*) bad "autodarts.com is REFUSING this board's sign-in - PULSE > Autodarts > Sign In Again" ;;
+  *"No board credentials"*) bad "Board not signed in - PULSE > Autodarts, sign in and choose the board" ;;
+  "") warn "No sign-in result in the log yet" ;;
+  *) ok "Connected to autodarts.com" ;;
+esac
 PYOUT=$(python3 - "$CFG" <<'PY'
-import sys, tomllib, os, re, json, urllib.request
+import sys, tomllib, os, re, json, glob, urllib.request
 def ok(m): print(f"  ✔ {m}")
 def warn(m): print(f"  ! {m}")
 def bad(m): print(f"  ✘ {m}")
@@ -57,10 +64,20 @@ try:
 except Exception:
     bad("No Autodarts settings file"); sys.exit()
 up = cfg.get("upstream") or cfg.get("auth") or {}
-ok("Board linked") if up.get("board_id") and up.get("api_key") else bad("Board NOT linked")
+ok("Board linked") if up.get("board_id") and up.get("api_key") else bad("Board NOT linked - sign in and choose the board")
 cam = cfg.get("cam", {})
 devs = [d for d in (cam.get("devices") or cam.get("cams") or []) if d]
-nodes = [ (re.search(r"/dev/video\d+", d) or [d])[0] for d in devs ]
+def node_of(d):
+    # Autodarts 2.1 names cameras by USB port ('...&location=pci-...-usb-0:1.3:1.0'), 2.0 by /dev/videoN
+    m = re.search(r"/dev/video\d+", d)
+    if m: return m.group(0)
+    loc = re.search(r"location=([^&]+)", d)
+    if loc:
+        hits = sorted(glob.glob(f"/dev/v4l/by-path/*{loc.group(1)}*video-index0"))
+        if hits: return os.path.realpath(hits[0])
+        return "USB port " + loc.group(1).split("usb-")[-1]
+    return d
+nodes = [node_of(d) for d in devs]
 if len(devs) == 3: ok("3 cameras configured")
 else: bad(f"{len(devs)} camera(s) configured - Autodarts needs 3")
 if len(set(nodes)) < len(nodes): bad(f"The same camera is selected twice: {nodes}")

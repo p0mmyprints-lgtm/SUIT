@@ -103,6 +103,33 @@ class SuitWindow(Adw.ApplicationWindow):
         # so changes that arrive with "Check for Updates" reach the kiosk (on next kiosk start)
         threading.Thread(target=self._sync_kiosk_extension, daemon=True, name="sync-kiosk-ext").start()
 
+        # A board whose key Autodarts refused looks fine but never scores: say so up front
+        threading.Thread(target=self._check_board_signin, daemon=True, name="board-signin").start()
+
+    def _check_board_signin(self):
+        from core.autodarts_service import board_signin_state, BOARD_SIGNIN_REFUSED, BOARD_SIGNIN_UNCLAIMED
+        time.sleep(2)
+        state = board_signin_state()
+        if state not in (BOARD_SIGNIN_REFUSED, BOARD_SIGNIN_UNCLAIMED):
+            return
+
+        def _ask():
+            dialog = Adw.AlertDialog(
+                heading="Your board needs signing in again",
+                body="Autodarts isn't accepting this board's sign-in, so games won't score. "
+                     "This usually happens after an Autodarts update.\n\n"
+                     "Open Autodarts to sign in again. Your calibration and settings are kept."
+            )
+            dialog.add_response("later", "Later")
+            dialog.add_response("open", "Open Autodarts")
+            dialog.set_response_appearance("open", Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_default_response("open")
+            dialog.connect("response", lambda d, r: self.open_autodarts_page() if r == "open" else None)
+            dialog.present(self)
+            return False
+
+        GLib.idle_add(_ask)
+
     @staticmethod
     def _sync_kiosk_extension():
         try:

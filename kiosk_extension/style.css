@@ -440,3 +440,46 @@
 .suit-config-back-btn svg {
   fill: currentColor !important;
 }
+
+
+/* ==========================================================================
+   Board sign-in banner (bottom of the Autodarts page)
+   ========================================================================== */
+#suit-signin-banner {
+  position: fixed !important;
+  left: 50% !important;
+  bottom: 24px !important;
+  transform: translateX(-50%) !important;
+  z-index: 2147483646 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  max-width: calc(100vw - 32px) !important;
+  padding: 14px 16px 14px 20px !important;
+  background: #3b1f0b !important;
+  border: 1px solid #f59e0b !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55) !important;
+  color: #fde68a !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+}
+
+#suit-signin-fix {
+  flex: none !important;
+  height: 44px !important;
+  padding: 0 18px !important;
+  background: #f59e0b !important;
+  color: #1c1204 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  font: inherit !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+#suit-signin-fix:active {
+  transform: scale(0.97) !important;
+}

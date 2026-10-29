@@ -117,6 +117,25 @@ def handle_action(action: str) -> dict:
         ret, out, err = _run_cmd(["pkill", "-TERM", "-f", "(chromium|chrome|firefox).*(--kiosk|play.autodarts.com)"])
         return {"status": "ok", "action": "exit_kiosk"}
 
+    elif action == "board_signin_status":
+        try:
+            from core.autodarts_service import board_signin_state
+            return {"status": "ok", "action": action, "state": board_signin_state()}
+        except Exception as e:
+            return {"status": "error", "error": f"Sign-in check failed: {e}"}
+
+    elif action == "board_signin_fix":
+        # Clear a refused board key; Autodarts then waits for the board to be picked again
+        try:
+            from core.autodarts_service import board_signin_state, clear_board_credentials, BOARD_SIGNIN_REFUSED
+            if board_signin_state() == BOARD_SIGNIN_REFUSED:
+                ok, msg = clear_board_credentials()
+                if not ok:
+                    return {"status": "error", "error": msg}
+            return {"status": "ok", "action": action}
+        except Exception as e:
+            return {"status": "error", "error": f"Sign-in fix failed: {e}"}
+
     elif action == "ping":
         return {"status": "ok", "action": "ping", "message": "SUIT Kiosk Host ready"}
 

@@ -12,7 +12,9 @@ from core.logger import get_logger
 from core.systemd_service import SystemdService
 from core.autodarts_service import (
     get_autodarts_cli_binary, is_autodarts_installed,
-    install_autodarts, uninstall_autodarts
+    install_autodarts, uninstall_autodarts,
+    board_signin_state, clear_board_credentials,
+    BOARD_SIGNIN_REFUSED, BOARD_SIGNIN_UNCLAIMED
 )
 from modules_gtk.async_utils import run_async
 from modules_gtk.ui_helpers import create_button_with_icon
@@ -40,6 +42,17 @@ class AutodartsView(Adw.NavigationPage):
         main_box.set_vexpand(True)
         main_box.set_hexpand(True)
         self.set_child(main_box)
+
+        # -------------------------------------------------------------
+        # 0. Sign-in banner: shown when Autodarts refuses the board's key
+        #    (e.g. after the 2.0 -> 2.1 update) or is waiting for a board to be picked
+        # -------------------------------------------------------------
+        self.signin_banner = Adw.Banner()
+        self.signin_banner.connect("button-clicked", self._on_signin_banner_clicked)
+        self.signin_banner.set_revealed(False)
+        main_box.append(self.signin_banner)
+        self._signin_state = None
+        self._signin_poll_id = None
 
         # -------------------------------------------------------------
         # 1. Main Content: Embedded VTE Terminal (No Scrolling Required)
@@ -123,6 +136,16 @@ class AutodartsView(Adw.NavigationPage):
         self.row_usb.add_suffix(chevron_usb)
         self.exp_tools.add_row(self.row_usb)
 
+        # Sign In Again: clears only the board's key (unlike Autodarts' Restore to default)
+        row_signin = Adw.ActionRow(
+            title="Sign In Again",
+            subtitle="Pick your board again. Calibration and settings are kept"
+        )
+        self.btn_signin = create_button_with_icon("system-users-symbolic", "Sign In Again", "secondary-btn", height=36, touch_btn=True)
+        self.btn_signin.connect("clicked", lambda b: self._confirm_signin_again())
+        row_signin.add_suffix(self.btn_signin)
+        self.exp_tools.add_row(row_signin)
+
         # Install / Reinstall & Uninstall Actions
         row_install = Adw.ActionRow(title="Software Management")
         box_install_btns = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -163,9 +186,69 @@ class AutodartsView(Adw.NavigationPage):
         self.refresh()
         if not self._console_active:
             self._spawn_console()
+        self._check_signin()
+        if self._signin_poll_id is None:
+            self._signin_poll_id = GLib.timeout_add_seconds(5, self._check_signin)
+
+    # --- Board sign-in -------------------------------------------------
+
+    def _check_signin(self):
+        run_async(board_signin_state, on_done=self._apply_signin_state)
+        return True  # keep polling while the page is open
+
+    def _apply_signin_state(self, state):
+        self._signin_state = state
+        if state == BOARD_SIGNIN_REFUSED:
+            self.signin_banner.set_title("Autodarts isn't accepting this board's sign-in, so games won't score.")
+            self.signin_banner.set_button_label("Sign In Again")
+            self.signin_banner.set_revealed(True)
+        elif state == BOARD_SIGNIN_UNCLAIMED:
+            self.signin_banner.set_title("Almost there: sign in and choose your board in the console below.")
+            self.signin_banner.set_button_label("")
+            self.signin_banner.set_revealed(True)
+        else:
+            self.signin_banner.set_revealed(False)
+
+    def _on_signin_banner_clicked(self, banner):
+        self._confirm_signin_again()
+
+    def _confirm_signin_again(self):
+        if self.is_busy:
+            return
+        dialog = Adw.AlertDialog(
+            heading="Sign in again?",
+            body="This removes the board's old sign-in, then the console below asks you to "
+                 "sign in and choose your board.\n\n"
+                 "Your calibration, cameras and settings are kept."
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("signin", "Sign In Again")
+        dialog.set_response_appearance("signin", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("signin")
+        dialog.connect("response", lambda d, r: self._run_signin_again() if r == "signin" else None)
+        dialog.present(self.window)
+
+    def _run_signin_again(self):
+        self.is_busy = True
+        self.spinner.start()
+        self.window.show_toast("Clearing the old sign-in...")
+
+        def on_done(res):
+            self.is_busy = False
+            self.spinner.stop()
+            ok, msg = res if isinstance(res, tuple) else (False, str(res))
+            self.window.show_toast(msg)
+            # Fresh console so it shows the sign-in / board picker straight away
+            GLib.timeout_add(2500, lambda: self._spawn_console(force=True) or False)
+            GLib.timeout_add(3500, lambda: self._check_signin() and False)
+
+        run_async(clear_board_credentials, on_done=on_done)
 
     def on_page_closed(self):
         """Lifecycle hook when navigating away: terminate embedded console so V4L2 handles are released."""
+        if self._signin_poll_id is not None:
+            GLib.source_remove(self._signin_poll_id)
+            self._signin_poll_id = None
         logger.info("AutodartsView closed: terminating child console process if running")
         if self._child_pid is not None:
             try:

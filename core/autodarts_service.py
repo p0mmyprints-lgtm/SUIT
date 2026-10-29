@@ -198,6 +198,75 @@ def unlink_stored_auth(config_path: Path | None = None, host: str = DEFAULT_HOST
     return save_stored_auth("", "", config_path=config_path, host=host, port=target_port)
 
 
+# --- Board Sign-in Health ---
+# Updating Autodarts 2.0 -> 2.1 invalidates the board's key: the server refuses it (HTTP 401)
+# and the board looks fine locally but never reaches autodarts.com. Autodarts logs this, so we
+# read its journal: the newest line about the board's key tells us where it stands.
+
+BOARD_SIGNIN_OK = "ok"
+BOARD_SIGNIN_REFUSED = "refused"        # key refused: needs clearing and claiming again
+BOARD_SIGNIN_UNCLAIMED = "unclaimed"    # no key: waiting for someone to pick their board
+BOARD_SIGNIN_UNKNOWN = "unknown"
+
+_SIGNIN_LOG_MARKERS = (
+    ("credentials were refused", BOARD_SIGNIN_REFUSED),
+    ("No board credentials", BOARD_SIGNIN_UNCLAIMED),
+    ("Connected to the Autodarts server", BOARD_SIGNIN_OK),
+    ("Claimed the board", BOARD_SIGNIN_OK),
+)
+
+
+def board_signin_state() -> str:
+    """Return BOARD_SIGNIN_OK / _REFUSED / _UNCLAIMED / _UNKNOWN from the Autodarts journal."""
+    try:
+        res = subprocess.run(
+            ["journalctl", "--user", "-u", "autodarts.service", "-n", "400", "-o", "cat", "--no-pager"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return BOARD_SIGNIN_UNKNOWN
+    for line in reversed(res.stdout.splitlines()):
+        for marker, state in _SIGNIN_LOG_MARKERS:
+            if marker in line:
+                return state
+    return BOARD_SIGNIN_UNKNOWN
+
+
+def clear_board_credentials(config_path: Path | None = None) -> tuple[bool, str]:
+    """Remove only the board's key from config.toml so Autodarts asks to claim the board again.
+
+    Unlike Autodarts' "Restore to default", calibration, cameras and every other setting stay.
+    A copy of the old file is kept next to it as config.before-signin.toml.
+    """
+    from core.systemd_service import SystemdService
+
+    path = config_path or DEFAULT_CONFIG_PATH
+    if not path.exists():
+        return False, "Autodarts has no settings file yet."
+    try:
+        # Stop first so the running board can't write its old key back
+        SystemdService.stop_unit("autodarts.service")
+        _strip_board_key(path)
+        return True, "Board key cleared. Choose your board to finish signing in."
+    except Exception as e:
+        logger.exception("Failed clearing the board key")
+        return False, f"Could not clear the board key: {e}"
+    finally:
+        SystemdService.start_unit("autodarts.service")
+
+
+def _strip_board_key(path: Path) -> None:
+    content = path.read_text(encoding="utf-8")
+    backup = path.with_name("config.before-signin.toml")
+    backup.write_text(content, encoding="utf-8")
+    backup.chmod(0o600)
+
+    content = re.sub(r"(?ms)^\[(upstream|auth)\].*?(?=(^\[|\Z))", "", content)
+    path.write_text(content.strip() + "\n", encoding="utf-8")
+    path.chmod(0o600)
+    logger.info("Cleared the board key from config.toml (backup: %s)", backup)
+
+
 # --- Autodarts CLI Discovery ---
 
 def get_autodarts_cli_binary() -> str | None:
@@ -914,6 +983,11 @@ def install_autodarts() -> tuple[bool, str]:
     # 1. Preserve existing credentials and camera settings
     preserved_bid, preserved_key = read_stored_auth()
     preserved_cam = read_cam_config()
+    key_refused = board_signin_state() == BOARD_SIGNIN_REFUSED
+    if key_refused:
+        # Putting a refused key back would leave the board just as stuck
+        logger.info("Board key was refused by Autodarts; not keeping it through the reinstall")
+        preserved_bid, preserved_key = "", ""
 
     # 2. Stop and remove legacy v1 system service if present
     cleanup_v1_cmd = (
@@ -1012,6 +1086,8 @@ def install_autodarts() -> tuple[bool, str]:
     ensure_autodarts_dirs()
 
     # 7. Restore preserved credentials and camera configuration before starting
+    if key_refused and DEFAULT_CONFIG_PATH.exists():
+        _strip_board_key(DEFAULT_CONFIG_PATH)
     if preserved_bid or preserved_key:
         save_stored_auth(preserved_bid, preserved_key)
     if any(preserved_cam.get("cams", [])):
