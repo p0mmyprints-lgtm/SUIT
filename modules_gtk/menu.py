@@ -146,6 +146,10 @@ class MainMenuView(Adw.NavigationPage):
         self.btn_update.connect("clicked", self._on_check_updates)
         self.update_group.add(self.btn_update)
 
+        # Quiet check at launch: only highlights the button, never installs anything
+        self._update_available = False
+        GLib.idle_add(self._check_updates_on_start)
+
         # Original project acknowledgement
         credit = Gtk.Label(
             label="Based on SUIT for Fedora by IteraThor • Customised by Pommy Prints"
@@ -199,11 +203,34 @@ class MainMenuView(Adw.NavigationPage):
             upd_icon = Gtk.Image.new_from_icon_name("software-update-available-symbolic")
             upd_icon.set_pixel_size(22)
             box.append(upd_icon)
-            lbl = Gtk.Label(label="Check for Updates")
+            lbl = Gtk.Label(label="Update Available" if self._update_available else "Check for Updates")
             lbl.add_css_class("heading")
             box.append(lbl)
 
         self.btn_update.set_child(box)
+
+    def _set_update_available(self, available: bool):
+        self._update_available = available
+        if available:
+            self.btn_update.add_css_class("update-available")
+        else:
+            self.btn_update.remove_css_class("update-available")
+        # Don't swap out a spinner (or re-enable the button) while a check or update is running
+        if self.btn_update.get_sensitive():
+            self._set_update_button_loading(False)
+
+    def _check_updates_on_start(self):
+        """Quiet background check at launch; only recolours the button when an update exists."""
+        def worker():
+            return UpdateService.check_update()
+
+        def on_done(info):
+            if info and not info.get("error") and info.get("has_update"):
+                logger.info("Update available on start-up check")
+                self._set_update_available(True)
+
+        run_async(worker, on_done=on_done)
+        return False
 
     def _on_check_updates(self, btn):
         logger.info("Check for updates triggered")
@@ -217,6 +244,8 @@ class MainMenuView(Adw.NavigationPage):
             if info.get("error"):
                 self.window.show_toast(info["error"])
                 return
+
+            self._set_update_available(bool(info.get("has_update")))
 
             if not info.get("has_update"):
                 self.window.show_toast("PULSE is up to date.")
@@ -261,6 +290,7 @@ class MainMenuView(Adw.NavigationPage):
                 self.window.show_toast(msg)
                 return
 
+            self._set_update_available(False)
             dialog = Adw.AlertDialog(
                 heading="Update Complete",
                 body="SUIT has been successfully updated.\n\nRestart now to apply the changes?"

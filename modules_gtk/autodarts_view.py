@@ -23,6 +23,56 @@ logger = get_logger("autodarts_view")
 
 SERVICE_NAME = "autodarts.service"
 
+# Grid the Autodarts TUI needs to show every section without its own scrollbar (measured upstream
+# on v2.1: 90 columns keeps the camera rows on one line, 27 rows fits Info..Detection speed plus
+# the status bar).
+TUI_COLS = 90
+TUI_ROWS = 27
+FONT_SCALE_MIN = 0.5
+FONT_SCALE_MAX = 1.6
+
+
+class FitTerminal(Vte.Terminal):
+    """VTE terminal that scales its font so the TUI_COLS x TUI_ROWS grid fits its allocation."""
+
+    def __init__(self):
+        super().__init__()
+        self._fit_source_id = None
+
+    def do_size_allocate(self, width, height, baseline):
+        Vte.Terminal.do_size_allocate(self, width, height, baseline)
+        # Changing the font inside an allocation would re-enter layout, so fit on idle
+        if self._fit_source_id is None and width > 1 and height > 1:
+            self._fit_source_id = GLib.idle_add(self._fit_font)
+
+    def is_fitting(self):
+        return self._fit_source_id is not None
+
+    def _fit_font(self):
+        self._fit_source_id = None
+        width, height = self.get_width(), self.get_height()
+        scale = self.get_font_scale()
+        cw, ch = self.get_char_width(), self.get_char_height()
+        if width <= 1 or height <= 1 or cw <= 0 or ch <= 0 or scale <= 0:
+            return False
+        # Cell size at scale 1.0; small margin since cells round to whole pixels
+        cw0, ch0 = cw / scale, ch / scale
+        target = min(width / (TUI_COLS * cw0), height / (TUI_ROWS * ch0)) * 0.97
+        target = max(FONT_SCALE_MIN, min(FONT_SCALE_MAX, target))
+        if abs(target - scale) > 0.02:
+            self.set_font_scale(target)
+            self._fit_source_id = GLib.idle_add(self._shrink_until_fits)
+        return False
+
+    def _shrink_until_fits(self):
+        # Cells round to whole pixels, so the estimate can land one row/column short
+        scale = self.get_font_scale()
+        if (self.get_column_count() >= TUI_COLS and self.get_row_count() >= TUI_ROWS) or scale <= FONT_SCALE_MIN:
+            self._fit_source_id = None
+            return False
+        self.set_font_scale(max(FONT_SCALE_MIN, scale - 0.02))
+        return True
+
 
 class AutodartsView(Adw.NavigationPage):
     def __init__(self, window):
@@ -32,6 +82,10 @@ class AutodartsView(Adw.NavigationPage):
         self.is_busy = False
         self._child_pid = None
         self._console_active = False
+        self._spawn_pending = False
+        self._page_active = False
+        self._spawn_wait_id = None
+        self._spawn_wait_tries = 0
 
         # Main layout container
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -67,25 +121,10 @@ class AutodartsView(Adw.NavigationPage):
         self.overlay.set_hexpand(True)
         self.terminal_card.append(self.overlay)
 
-        # VTE Terminal directly inside overlay: full viewport, zero scrolling needed
-        self.terminal = Vte.Terminal()
-        self.terminal.set_font(Pango.FontDescription.from_string("Monospace 8.5"))
-        self.terminal.set_cursor_blink_mode(Vte.CursorBlinkMode.OFF)
-        self.terminal.set_scrollback_lines(3000)
-        self.terminal.set_mouse_autohide(True)
-        self.terminal.set_vexpand(True)
-        self.terminal.set_hexpand(True)
-        self.terminal.set_size_request(780, 660)
-
-        # Dark theme palette (Catppuccin/Libadwaita dark match)
-        bg = Gdk.RGBA()
-        bg.parse("#181825")
-        fg = Gdk.RGBA()
-        fg.parse("#cdd6f4")
-        self.terminal.set_colors(fg, bg, [])
-
-        self.terminal.connect("child-exited", self._on_child_exited)
-        self.overlay.set_child(self.terminal)
+        # VTE Terminal directly inside overlay: full viewport, zero scrolling needed.
+        # Replaced with a fresh one for every console session (see _new_terminal)
+        self.terminal = None
+        self._new_terminal()
 
         # Overlay banner for when console is stopped / exited
         self.box_overlay_banner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -182,9 +221,34 @@ class AutodartsView(Adw.NavigationPage):
         self.connect("map", self._on_page_mapped)
         self.connect("unmap", self._on_page_unmapped)
 
+    def _new_terminal(self):
+        """Every console session gets a fresh VTE widget: a second child spawned into a reused
+        terminal intermittently stays blank or aborts."""
+        terminal = FitTerminal()
+        terminal.set_font(Pango.FontDescription.from_string("Monospace 8.5"))
+        terminal.set_cursor_blink_mode(Vte.CursorBlinkMode.OFF)
+        terminal.set_scrollback_lines(3000)
+        terminal.set_mouse_autohide(True)
+        terminal.set_vexpand(True)
+        terminal.set_hexpand(True)
+        # Small minimum: FitTerminal scales the font to whatever space the page gives it
+        terminal.set_size_request(360, 200)
+
+        # Dark theme palette (Catppuccin/Libadwaita dark match)
+        bg = Gdk.RGBA()
+        bg.parse("#181825")
+        fg = Gdk.RGBA()
+        fg.parse("#cdd6f4")
+        terminal.set_colors(fg, bg, [])
+
+        terminal.connect("child-exited", self._on_child_exited)
+        self.terminal = terminal
+        self.overlay.set_child(terminal)
+
     def _on_page_mapped(self, widget):
+        self._page_active = True
         self.refresh()
-        if not self._console_active:
+        if not self._console_active and not self._spawn_pending and self._spawn_wait_id is None:
             self._spawn_console()
         self._check_signin()
         if self._signin_poll_id is None:
@@ -250,6 +314,10 @@ class AutodartsView(Adw.NavigationPage):
             GLib.source_remove(self._signin_poll_id)
             self._signin_poll_id = None
         logger.info("AutodartsView closed: terminating child console process if running")
+        self._page_active = False
+        if self._spawn_wait_id is not None:
+            GLib.source_remove(self._spawn_wait_id)
+            self._spawn_wait_id = None
         if self._child_pid is not None:
             try:
                 os.kill(self._child_pid, 15)  # SIGTERM
@@ -305,12 +373,35 @@ class AutodartsView(Adw.NavigationPage):
             self._child_pid = None
             self._console_active = False
 
-        if self._child_pid is not None and not force:
+        busy = self._child_pid is not None or self._spawn_pending or self._spawn_wait_id is not None
+        if busy and not force:
             return
+        if self._spawn_wait_id is not None:
+            GLib.source_remove(self._spawn_wait_id)
+            self._spawn_wait_id = None
+        # A spawn still in flight belongs to the terminal we're about to replace; its callback
+        # kills that child, so don't let it block the next page visit
+        self._spawn_pending = False
 
         self.box_overlay_banner.set_visible(False)
-        self.terminal.reset(True, True)
+        self._new_terminal()
+        self._spawn_wait_tries = 0
+        self._spawn_wait_id = GLib.timeout_add(50, self._spawn_when_sized, binary)
 
+    def _spawn_when_sized(self, binary):
+        """Start the TUI only once the terminal has its real size and font scale: a TUI started on
+        the unallocated default grid can stay blank."""
+        sized = self.terminal.get_width() > 1 and not self.terminal.is_fitting()
+        self._spawn_wait_tries += 1
+        if not sized and self._spawn_wait_tries < 40:
+            return True  # check again in 50 ms, give up waiting after ~2 s
+        self._spawn_wait_id = None
+        if self._page_active and not self._console_active:
+            self._start_child(binary)
+        return False
+
+    def _start_child(self, binary):
+        self._spawn_pending = True
         try:
             self.terminal.spawn_async(
                 pty_flags=Vte.PtyFlags.DEFAULT,
@@ -325,12 +416,31 @@ class AutodartsView(Adw.NavigationPage):
                 user_data=None
             )
         except Exception as e:
+            self._spawn_pending = False
             logger.exception("Failed to spawn Autodarts terminal: %s", e)
             self.box_overlay_banner.set_visible(True)
             self.lbl_overlay_msg.set_text(f"Spawn failed: {e}")
             self.btn_overlay_start.set_visible(True)
 
     def _on_spawn_cb(self, terminal, pid, error, user_data):
+        if terminal is not self.terminal:
+            # Superseded by a forced respawn while this one was in flight
+            if not error:
+                logger.info("Autodarts console spawn superseded; terminating PID %s", pid)
+                try:
+                    os.kill(pid, 15)
+                except Exception:
+                    pass
+            return
+        self._spawn_pending = False
+        if not error and not self._page_active:
+            # Page was left while the spawn was in flight
+            logger.info("Autodarts console spawned after page closed; terminating PID %s", pid)
+            try:
+                os.kill(pid, 15)
+            except Exception:
+                pass
+            return
         if error:
             logger.error("VTE spawn error: %s", error)
             self._console_active = False
@@ -347,6 +457,8 @@ class AutodartsView(Adw.NavigationPage):
 
     def _on_child_exited(self, terminal, status):
         logger.info("Autodarts console exited with status %s", status)
+        if terminal is not self.terminal:
+            return  # an old session's widget; the current console is unaffected
         self._child_pid = None
         self._console_active = False
         self.box_overlay_banner.set_visible(True)

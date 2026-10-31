@@ -91,6 +91,24 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => newTabs.delete(tabId));
 
+// The smallest page Autodarts 2.1's Board Manager will draw (its index.html: 960 x 640),
+// with a little room so rounding never tips it back over.
+const BOARD_MANAGER_MIN = { width: 980, height: 660 };
+
+// Zoom one Board Manager tab out just enough to clear its "needs a bigger screen" cover.
+// width/height are the page's size at its current zoom, so times the zoom is the size at 100%.
+async function fitZoom(tabId, width, height) {
+  const current = await chrome.tabs.getZoom(tabId);
+  const full = { width: width * current, height: height * current };
+  let zoom = Math.min(1, full.width / BOARD_MANAGER_MIN.width, full.height / BOARD_MANAGER_MIN.height);
+  zoom = Math.max(0.3, Math.floor(zoom * 20) / 20);
+  if (Math.abs(zoom - current) < 0.01) return current;
+  // Only this tab: Play keeps its own size
+  await chrome.tabs.setZoomSettings(tabId, { mode: "automatic", scope: "per-tab" });
+  await chrome.tabs.setZoom(tabId, zoom);
+  return zoom;
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (!request || !request.action) {
     sendResponse({ status: "error", error: "No action specified" });
@@ -117,6 +135,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
       });
     }
+    return true;
+  }
+
+  if (request.action === "fit_zoom") {
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (!tabId || !request.width || !request.height) {
+      sendResponse({ status: "error", error: "No tab to fit" });
+      return false;
+    }
+    fitZoom(tabId, request.width, request.height)
+      .then((zoom) => sendResponse({ status: "ok", zoom }))
+      .catch((err) => sendResponse({ status: "error", error: String(err) }));
     return true;
   }
 

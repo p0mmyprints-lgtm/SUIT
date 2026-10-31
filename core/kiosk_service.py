@@ -28,6 +28,11 @@ class KioskService:
     HOST_SCRIPT = HOST_SCRIPT
 
     INSTALLED_EXTENSION_DIR = Path.home() / ".local" / "share" / "suit" / "kiosk_extension"
+    # Chromium keeps its own copy of the extension's background script and goes on running
+    # it after the files change, even across restarts and version bumps. This file asks
+    # launch-kiosk.sh to clear that copy before Chromium next starts.
+    WORKER_STALE_MARKER = Path.home() / ".local" / "share" / "suit" / "kiosk-worker-stale"
+    LAUNCHER_PATH = Path.home() / ".local" / "share" / "suit" / "bin" / "launch-kiosk.sh"
     CHROMIUM_CONF_PATH = Path("/etc/chromium/chromium.conf")
     SYSTEM_NATIVE_MESSAGING_DIR = Path("/etc/chromium/native-messaging-hosts")
     USER_DESKTOP_DIR = Path.home() / ".local" / "share" / "applications"
@@ -43,16 +48,38 @@ class KioskService:
         return cls.EXTENSION_DIR
 
     @classmethod
+    def copy_extension_files(cls) -> None:
+        """Copies the extension into the user data directory, and if its background script
+        changed, marks Chromium's saved copy of it for clearing at the next kiosk start."""
+        worker = "background.js"
+        try:
+            before = (cls.INSTALLED_EXTENSION_DIR / worker).read_bytes()
+        except OSError:
+            before = None
+        cls.INSTALLED_EXTENSION_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(cls.EXTENSION_DIR, cls.INSTALLED_EXTENSION_DIR, dirs_exist_ok=True)
+        host_script = cls.INSTALLED_EXTENSION_DIR / "host" / "suit_kiosk_host.py"
+        if host_script.exists():
+            host_script.chmod(0o755)
+        try:
+            after = (cls.INSTALLED_EXTENSION_DIR / worker).read_bytes()
+        except OSError:
+            after = None
+        if before is not None and before != after:
+            cls.WORKER_STALE_MARKER.touch()
+            logger.info("Kiosk extension background changed: Chromium's copy is cleared at the next kiosk start")
+
+    @classmethod
     def sync_extension_files(cls) -> None:
         """Syncs the latest extension files to user data directory if already installed."""
         try:
             if cls.INSTALLED_EXTENSION_DIR.exists() and cls.EXTENSION_DIR.exists():
-                shutil.copytree(cls.EXTENSION_DIR, cls.INSTALLED_EXTENSION_DIR, dirs_exist_ok=True)
-                host_script = cls.INSTALLED_EXTENSION_DIR / "host" / "suit_kiosk_host.py"
-                if host_script.exists():
-                    host_script.chmod(0o755)
+                cls.copy_extension_files()
+            # Keep an existing kiosk's launcher current, so it knows to clear the stale copy
+            if cls.LAUNCHER_PATH.exists():
+                cls.ensure_launcher_script()
         except Exception:
-            pass
+            logger.exception("Failed syncing the kiosk extension")
 
     @classmethod
     def is_permanent_extension_installed(cls, chromium_conf: Path | None = None, desktop_path: Path | None = None) -> bool:
@@ -94,10 +121,8 @@ class KioskService:
             # 1. Sync extension files to persistent user data directory
             cls.INSTALLED_EXTENSION_DIR.mkdir(parents=True, exist_ok=True)
             if cls.EXTENSION_DIR.exists():
-                shutil.copytree(cls.EXTENSION_DIR, cls.INSTALLED_EXTENSION_DIR, dirs_exist_ok=True)
+                cls.copy_extension_files()
             host_script = cls.INSTALLED_EXTENSION_DIR / "host" / "suit_kiosk_host.py"
-            if host_script.exists():
-                host_script.chmod(0o755)
 
             # 2. Install user native messaging host manifests
             cls.ensure_native_messaging_host(host_script_path=host_script)
@@ -299,13 +324,20 @@ class KioskService:
 
     @classmethod
     def ensure_launcher_script(cls) -> Path:
-        bin_dir = Path.home() / ".local" / "share" / "suit" / "bin"
-        bin_dir.mkdir(parents=True, exist_ok=True)
-        script_path = bin_dir / "launch-kiosk.sh"
+        script_path = cls.LAUNCHER_PATH
+        script_path.parent.mkdir(parents=True, exist_ok=True)
         content = """#!/usr/bin/env bash
 # SUIT Autodarts Kiosk Launcher
 # Remove stale lock files to ensure unattended boot never hangs after crash or hostname change
 rm -f "$HOME/.config/chromium/Singleton"* "$HOME/.config/google-chrome/Singleton"* 2>/dev/null
+
+# PULSE updated the kiosk extension: Chromium would go on running its saved copy of the old
+# background script, so clear its service workers (sites just register theirs again).
+# Only while no Chromium is running, so a second launch never pulls it from under the first.
+if [ -e "$HOME/.local/share/suit/kiosk-worker-stale" ] && ! pgrep -f "chromium-browser/chromium-browser|/chromium/chromium" >/dev/null; then
+    rm -rf "$HOME/.config/chromium/Default/Service Worker"
+    rm -f "$HOME/.local/share/suit/kiosk-worker-stale"
+fi
 
 # Automatically dismiss GNOME Shell Overview on startup so kiosk displays fullscreen seamlessly
 (

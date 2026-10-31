@@ -65,6 +65,23 @@
       setupBoardConfigReturnButton();
     }
 
+    // Autodarts 2.1's Board Manager covers itself with "This page needs a bigger screen"
+    // below 960 x 640. On a smaller kiosk screen (a portrait one, say) zoom this tab out
+    // until it fits; background.js works out the zoom from the size at 100%.
+    let fitTimer = null;
+    function fitBoardManager() {
+      try {
+        chrome.runtime.sendMessage({ action: "fit_zoom", width: window.innerWidth, height: window.innerHeight }, () => {
+          void chrome.runtime.lastError;
+        });
+      } catch (e) { /* extension reloaded - nothing to fit */ }
+    }
+    fitBoardManager();
+    window.addEventListener("resize", () => {
+      clearTimeout(fitTimer);
+      fitTimer = setTimeout(fitBoardManager, 300);
+    });
+
     const observer = new MutationObserver(() => {
       setupBoardConfigReturnButton();
     });

@@ -519,6 +519,18 @@ button.compact-btn,
     border-color: #55c94b;
 }
 
+/* Main menu update button when a new PULSE version is available */
+button.pommy-update-btn.update-available {
+    background-color: alpha(#e5a50a, 0.18);
+    color: #f8e45c;
+    border: 1px solid alpha(#e5a50a, 0.55);
+}
+
+button.pommy-update-btn.update-available:hover {
+    background-color: alpha(#e5a50a, 0.28);
+    border-color: #e5a50a;
+}
+
 /* ===== Pommy Autodarts Submenu Theme ===== */
 
 /* Dashboard / settings cards */
