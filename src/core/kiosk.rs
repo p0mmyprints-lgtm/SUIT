@@ -261,7 +261,8 @@ rm -f "$HOME/.config/chromium/Singleton"* "$HOME/.config/google-chrome/Singleton
 TOUCH="$HOME/.config/autodarts-touch"
 if [ -d "$TOUCH" ] && ! pgrep -f -- "--user-data-dir=$TOUCH" >/dev/null; then
     rm -f "$TOUCH/Singleton"* 2>/dev/null
-    "$1" --user-data-dir="$TOUCH" "${@:2}" >/dev/null 2>&1 &
+    # muted: it shows the same match as the game screen, which already plays the calls
+    "$1" --user-data-dir="$TOUCH" --mute-audio "${@:2}" >/dev/null 2>&1 &
 fi
 
 exec "$@"
