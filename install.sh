@@ -2,7 +2,7 @@
 set -e
 
 echo "========================================="
-echo "   SUIT for Fedora (Rust) - Automated Setup"
+echo "   PULSE by Pommy Prints - Automated Setup"
 echo "========================================="
 
 if [ ! -f /etc/fedora-release ]; then

@@ -42,12 +42,12 @@ use adw::prelude::*;
 /// Build the application: `suit` with no subcommand; `start` opens a page right away.
 pub fn run_app(start: Option<fn(&Win)>) -> i32 {
     gtk::glib::set_prgname(Some("de.iterathor.suit.gtk"));
-    gtk::glib::set_application_name("SUIT for Fedora");
+    gtk::glib::set_application_name("PULSE");
     let app = adw::Application::builder().application_id("de.iterathor.suit.gtk").build();
     let win: std::rc::Rc<std::cell::RefCell<Option<Win>>> = Default::default();
     let w2 = win.clone();
     app.connect_activate(move |app| {
-        log::info!("Activating SUIT for Fedora GTK4 Application");
+        log::info!("Activating PULSE GTK4 Application");
         // Force/prefer dark mode (matching GNOME native dark palette)
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::PreferDark);
         gtk::Window::set_default_icon_name("de.iterathor.suit.gtk");
@@ -62,7 +62,7 @@ pub fn run_app(start: Option<fn(&Win)>) -> i32 {
         }
     });
     app.connect_shutdown(|_| {
-        log::info!("Shutting down SUIT for Fedora GTK4 Application");
+        log::info!("Shutting down PULSE GTK4 Application");
         crate::core::systemd::manager::ensure_autodarts_restored_on_exit();
     });
     let code = app.run_with_args::<&str>(&[]);

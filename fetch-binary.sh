@@ -8,7 +8,7 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE_URL="${SUIT_BINARY_URL:-https://github.com/IteraThor/SUIT/releases/download/binaries}"
+BASE_URL="${SUIT_BINARY_URL:-https://github.com/p0mmyprints-lgtm/SUIT/releases/download/binaries}"
 
 # shellcheck disable=SC1091
 . /etc/os-release

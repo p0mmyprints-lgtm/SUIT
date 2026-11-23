@@ -4,7 +4,7 @@ name: Binaries
 
 on:
   push:
-    branches: [main]
+    branches: [main, pulse-v2]
   workflow_dispatch:
 
 permissions:

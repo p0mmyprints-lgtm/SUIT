@@ -55,7 +55,7 @@ pub fn create_desktop_launcher() -> std::io::Result<()> {
     install_hicolor_icons();
     let pd = project_dir();
     let entry = format!(
-        "[Desktop Entry]\nVersion=1.0\nName=SUIT for Fedora\nComment=Setup Utilities by IteraThor (GTK4 / Libadwaita)\nExec={}\nIcon=de.iterathor.suit.gtk\nPath={}\nTerminal=false\nType=Application\nCategories=Utility;Settings;\nStartupNotify=true\nStartupWMClass=de.iterathor.suit.gtk\n",
+        "[Desktop Entry]\nVersion=1.0\nName=PULSE\nComment=Autodarts Setup, Tools & Control by Pommy Prints\nExec={}\nIcon=de.iterathor.suit.gtk\nPath={}\nTerminal=false\nType=Application\nCategories=Utility;Settings;\nStartupNotify=true\nStartupWMClass=de.iterathor.suit.gtk\n",
         pd.join("suit-launch.sh").display(),
         pd.display()
     );

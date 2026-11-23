@@ -38,18 +38,19 @@ impl Page for MenuPage {
 impl MenuPage {
     pub fn new(win: Win) -> Rc<MenuPage> {
         let (scrolled, main) = page_shell();
-        let nav = adw::NavigationPage::builder().title(tr("SUIT for Fedora")).tag("main_menu").child(&scrolled).build();
+        let nav = adw::NavigationPage::builder().title(tr("PULSE")).tag("main_menu").child(&scrolled).build();
 
         // Header banner card with logo
         let banner = gtk::Box::new(gtk::Orientation::Vertical, 2);
         banner.add_css_class("card");
+        banner.add_css_class("banner-card");
         banner.set_margin_bottom(2);
         let inner = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         inner.set_margin_top(6);
         inner.set_margin_bottom(6);
         inner.set_margin_start(12);
         inner.set_margin_end(12);
-        let logo = util::project_dir().join("assets/icons/suit-icon.png");
+        let logo = util::project_dir().join("assets/icons/pommy-banner.png");
         if logo.exists() {
             let img = gtk::Image::from_file(&logo);
             img.set_pixel_size(52);
@@ -59,11 +60,12 @@ impl MenuPage {
         let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
         text.set_valign(gtk::Align::Center);
         text.set_hexpand(true);
-        let t = gtk::Label::new(Some(&tr("SUIT for Fedora")));
+        let t = gtk::Label::new(Some(&tr("PULSE")));
         t.set_xalign(0.0);
         t.add_css_class("title-3");
+        t.add_css_class("pommy-title");
         text.append(&t);
-        let st = gtk::Label::new(Some(&tr("Setup Utilities by IteraThor for Autodarts")));
+        let st = gtk::Label::new(Some(&tr("by Pommy Prints • Autodarts Setup, Tools & Control")));
         st.set_xalign(0.0);
         st.add_css_class("dim-label");
         text.append(&st);
@@ -149,6 +151,11 @@ impl MenuPage {
         btn_update.add_css_class("suggested-action");
         btn_update.add_css_class("touch-btn");
         ug.append(&btn_update);
+        let credit = gtk::Label::new(Some("Based on SUIT for Fedora by IteraThor • Customised by Pommy Prints"));
+        credit.add_css_class("dim-label");
+        credit.add_css_class("caption");
+        credit.set_margin_top(8);
+        ug.append(&credit);
 
         let me = Rc::new(MenuPage { nav, win, btn_update, badge_new, badge_update, update_available: Cell::new(false) });
         me.set_loading(false, "");
@@ -261,7 +268,7 @@ impl MenuPage {
             return;
         }
         if !info.has_update {
-            self.win.show_toast("SUIT for Fedora is up to date.");
+            self.win.show_toast("PULSE is up to date.");
             return;
         }
         let mut body = if info.commits_behind == 1 {

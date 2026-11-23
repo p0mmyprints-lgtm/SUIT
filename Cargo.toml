@@ -2,7 +2,7 @@
 name = "suit"
 version = "0.7.0"
 edition = "2021"
-description = "SUIT for Fedora: Setup Utilities by IteraThor for Autodarts (Rust port)"
+description = "PULSE by Pommy Prints, based on SUIT for Fedora by IteraThor (Rust port)"
 license-file = "LICENSE"
 
 [[bin]]

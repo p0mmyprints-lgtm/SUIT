@@ -27,7 +27,7 @@ fn err(msg: impl Into<String>) -> UpdateInfo {
 pub fn check_update(project: Option<&Path>) -> UpdateInfo {
     let dir: PathBuf = project.map(|p| p.to_path_buf()).unwrap_or_else(project_dir);
     if !dir.join(".git").exists() {
-        return err("Git repository not found. SUIT must be installed via git to update.");
+        return err("Git repository not found. PULSE must be installed via git to update.");
     }
     let br = branch(&dir);
     let remote_ref = format!("origin/{}", br);

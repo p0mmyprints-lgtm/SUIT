@@ -427,3 +427,105 @@ button.lang-flag-btn:hover picture {
 button.lang-flag-btn:checked picture {
     opacity: 0.9;
 }
+
+
+/* ===== PULSE theme (Pommy Prints): green on near-black ===== */
+/* Everything upstream draws with the accent colour (switches, suggested buttons, NEW pills,
+   selected camera cards, focus rings, links) turns Pommy green from these four lines. */
+@define-color accent_color #55c94b;
+@define-color accent_bg_color #3faa38;
+@define-color accent_fg_color #ffffff;
+@define-color window_bg_color #101210;
+@define-color view_bg_color #121512;
+@define-color headerbar_bg_color #121512;
+@define-color card_bg_color #151815;
+@define-color popover_bg_color #171a17;
+@define-color dialog_bg_color #151815;
+
+.pommy-title {
+    color: #55c94b;
+    font-weight: 800;
+}
+
+.banner-card {
+    background-color: #151815;
+    border: 1px solid #294329;
+    border-radius: 16px;
+}
+
+list.boxed-list > row image {
+    color: #55c94b;
+}
+
+.tile-card,
+.tile-card-compact {
+    background-color: #141814;
+    border: 1px solid #294329;
+}
+
+.secondary-btn,
+button.compact-btn,
+.compact-btn,
+.touch-btn,
+.angle-touch-btn {
+    background-color: #171b17;
+    border: 1px solid #315a31;
+    color: #eeeeee;
+}
+
+.secondary-btn:hover,
+button.compact-btn:hover,
+.compact-btn:hover,
+.touch-btn:hover,
+.angle-touch-btn:hover {
+    background-color: #1d261d;
+    border-color: #55c94b;
+}
+
+/* Green main buttons (Check for Updates, Save, Start ...) */
+button.suggested-action,
+.touch-btn.suggested-action,
+.compact-btn.suggested-action {
+    background-color: #3faa38;
+    color: #ffffff;
+    border-color: #55c94b;
+}
+
+button.suggested-action:hover,
+.touch-btn.suggested-action:hover,
+.compact-btn.suggested-action:hover {
+    background-color: #49b941;
+    border-color: #63d85a;
+}
+
+/* Keep destructive controls red */
+.secondary-btn-destructive {
+    background-color: alpha(#e01b24, 0.12);
+    border-color: alpha(#e01b24, 0.35);
+    color: #ff7b63;
+}
+
+switch:checked {
+    background-color: #55c94b;
+}
+
+dropdown > button,
+combobox button {
+    background-color: #171b17;
+    border: 1px solid #315a31;
+}
+
+dropdown > button:hover,
+combobox button:hover {
+    border-color: #55c94b;
+}
+
+selection {
+    background-color: #3faa38;
+    color: #ffffff;
+}
+
+preferencesgroup row:focus,
+preferencesgroup row:focus-within {
+    outline: none;
+}

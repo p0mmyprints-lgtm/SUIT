@@ -52,7 +52,7 @@ impl Win {
         let (sw, sh) = screen_size();
         let window = adw::ApplicationWindow::builder()
             .application(app)
-            .title(tr("SUIT for Fedora"))
+            .title(tr("PULSE"))
             .default_width(840.min((sw - 60).max(560)))
             .default_height(720.min((sh - 90).max(540)))
             .build();
@@ -83,7 +83,7 @@ impl Win {
         btn_back.set_size_request(30, 28);
         btn_back.set_visible(false);
         header.pack_start(&btn_back);
-        let title = adw::WindowTitle::new(&tr("SUIT for Fedora"), "");
+        let title = adw::WindowTitle::new(&tr("PULSE"), "");
         header.set_title_widget(Some(&title));
         let nav = adw::NavigationView::new();
         nav.set_vexpand(true);
@@ -337,12 +337,12 @@ impl Win {
             Some(p) if !is_menu => {
                 self.btn_back.set_visible(true);
                 let t = p.title();
-                self.title.set_title(if t.is_empty() { tr("SUIT for Fedora") } else { t.to_string() }.as_str());
-                self.title.set_subtitle(&tr("SUIT for Fedora"));
+                self.title.set_title(if t.is_empty() { tr("PULSE") } else { t.to_string() }.as_str());
+                self.title.set_subtitle(&tr("PULSE by Pommy Prints"));
             }
             _ => {
                 self.btn_back.set_visible(false);
-                self.title.set_title(&tr("SUIT for Fedora"));
+                self.title.set_title(&tr("PULSE"));
                 self.title.set_subtitle("");
             }
         }
@@ -385,7 +385,7 @@ impl Win {
     /// Switch the UI language: rebuild the main menu and drop cached pages so they rebuild on next open.
     pub fn set_language(&self, lang: &str) {
         let _ = set_language(lang);
-        self.window.set_title(Some(&tr("SUIT for Fedora")));
+        self.window.set_title(Some(&tr("PULSE")));
         self.btn_back.set_tooltip_text(Some(&tr("Back to Menu")));
         // A running Camera Optimizer job needs its page; it keeps the old language until restart
         let keep_opt = crate::core::hbvcal::oneclick::JOB.running();
