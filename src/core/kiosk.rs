@@ -256,6 +256,14 @@ rm -f "$HOME/.config/chromium/Singleton"* "$HOME/.config/google-chrome/Singleton
     done
 ) &
 
+# PULSE: a second, touch-screen kiosk for picking games, when its browser profile has been set up
+# (~/.config/autodarts-touch). It opens and closes with the main kiosk.
+TOUCH="$HOME/.config/autodarts-touch"
+if [ -d "$TOUCH" ] && ! pgrep -f -- "--user-data-dir=$TOUCH" >/dev/null; then
+    rm -f "$TOUCH/Singleton"* 2>/dev/null
+    "$1" --user-data-dir="$TOUCH" "${@:2}" >/dev/null 2>&1 &
+fi
+
 exec "$@"
 "#;
     let _ = write_file(&p, content);
