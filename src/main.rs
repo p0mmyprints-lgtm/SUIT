@@ -3,7 +3,7 @@
 //! `suit` starts the GTK app; subcommands run the background parts that the app installs:
 //!   suit camera-keeper [--interval 2] [--once]   keep saved camera settings applied (user service)
 //!   suit kiosk-host                              Chrome native messaging host for the kiosk extension
-//!   suit display --apply-boot                    re-apply rotation and touch calibration at login
+//!   suit display --apply-boot [--watch]          re-apply rotation and touch calibration at login (--watch: and on screen changes)
 //!   suit display                                 list monitors and touch screens
 //!   suit wireless-screen --watch                 mirror or extend a plugged-in monitor onto the tablet screen
 //!   suit wireless-screen --remove                undo the Wireless Screen setup (also --status, --help)
@@ -33,6 +33,9 @@ fn main() {
             core::logger::setup_logging(None);
             if rest.iter().any(|a| a == "--apply-boot") {
                 core::display::apply_boot_config();
+                if rest.iter().any(|a| a == "--watch") {
+                    core::display::watch_layout();
+                }
             } else {
                 for m in core::display::get_monitors() {
                     println!("Monitor: {} {} rotation={} primary={}", m.name, m.res, m.rotation, m.is_primary);

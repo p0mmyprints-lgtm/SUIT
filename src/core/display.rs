@@ -481,7 +481,7 @@ fn ensure_autostart_with(cfg: &Map<String, Value>) -> bool {
         return true;
     }
     let entry = format!(
-        "[Desktop Entry]\nType=Application\nName=SUIT Display & Touch Rotation\nExec=bash -c \"cd {} && {} display --apply-boot\"\nHidden=false\nNoDisplay=false\nX-GNOME-Autostart-enabled=true\nComment=Maintain screen and touch rotation on boot\n",
+        "[Desktop Entry]\nType=Application\nName=SUIT Display & Touch Rotation\nExec=bash -c \"cd {} && {} display --apply-boot --watch\"\nHidden=false\nNoDisplay=false\nX-GNOME-Autostart-enabled=true\nComment=Maintain screen and touch rotation on boot\n",
         project_dir().display(),
         self_exe().display()
     );
@@ -648,20 +648,67 @@ pub fn apply_boot_config() -> bool {
             }
         }
     }
-    // Check the udev rule without unbinding USB unless the rule was missing
-    if let Some((mon, s)) = cfg.iter().next() {
-        let touch = s["touch_device"].as_str().unwrap_or("None");
-        let target = normalize_rotation(&s["rotation"]);
-        let rule = Path::new(UDEV_RULE_PATH).exists();
-        if touch != "None" && !touch.is_empty() && target != 0 {
-            if !rule {
-                log::info!("Udev rule missing on boot; writing and rebinding");
-                apply_touch_calibration(touch, mon, target, None);
-            }
-        } else if rule {
+    sync_touch_matrix(&cfg);
+    true
+}
+
+/// Keep the touch matrix matching the layout Mutter has NOW. The matrix scales the touch panel onto
+/// its own screen within the whole desktop, so it changes when a second screen comes or goes
+/// (a TV switched off, a wireless screen): the rule written with one screen sends touches to the
+/// wrong place with two. Rewrites the rule and rebinds the panel only when the matrix differs.
+pub fn sync_touch_matrix(cfg: &Map<String, Value>) -> bool {
+    let has_touch = |s: &Value| s["touch_device"].as_str().is_some_and(|t| !t.is_empty() && t != "None");
+    let Some((mon, s)) = cfg.iter().find(|(_, s)| has_touch(s)).or_else(|| cfg.iter().next()) else { return false };
+    let touch = s["touch_device"].as_str().unwrap_or("None");
+    let rule = std::fs::read_to_string(UDEV_RULE_PATH).ok();
+    if touch == "None" || touch.is_empty() {
+        if rule.is_some() {
             log::info!("Udev rule found when none expected; clearing");
             write_udev_rule(None, None);
         }
+        return false;
     }
+    let Some(st) = get_current_mutter_state(1) else { return false };
+    if !st.logical.iter().any(|lm| lm.monitors.iter().any(|m| m == mon)) {
+        // The touch screen itself is off: keep the rule for when it comes back
+        return false;
+    }
+    let Some(m) = calculate_affine_matrix(&st, mon, Some(normalize_rotation(&s["rotation"]) as u32)) else { return false };
+    if m == "1.000000 0.000000 0.000000 0.000000 1.000000 0.000000" {
+        if rule.is_none() {
+            return false;
+        }
+        log::info!("Touch screen fills the desktop unrotated; clearing the touch rule");
+        write_udev_rule(None, None);
+    } else {
+        if rule.as_deref().is_some_and(|r| r.contains(&m)) {
+            return false;
+        }
+        log::info!("Screen layout changed; touch matrix for {} is now {}", mon, m);
+        if !write_udev_rule(Some(touch), Some(&m)) {
+            return false;
+        }
+    }
+    rebind_usb_touch(touch);
     true
+}
+
+/// `suit display --apply-boot --watch`: after the boot apply, follow screen layout changes for the
+/// whole session so touch stays on the touch screen when another screen is plugged, unplugged or
+/// switched on/off.
+pub fn watch_layout() -> ! {
+    let mut last = None;
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let Some(st) = get_current_mutter_state(1) else { continue };
+        if last == Some(st.serial) {
+            continue;
+        }
+        if last.is_some() {
+            // Let Mutter finish the change (and GNOME's own layout restore) before measuring it
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            sync_touch_matrix(&load_config());
+        }
+        last = Some(st.serial);
+    }
 }
