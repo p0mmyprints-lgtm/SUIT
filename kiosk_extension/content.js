@@ -513,12 +513,26 @@
     attachButtonToHeader();
   }
 
+  // PULSE: with a second kiosk on a portrait touch screen for picking games, a match started there
+  // only opens in that browser; this one (the landscape game screen) shows "You are currently in a
+  // match". Open the match here too, so games picked by touch play on the big screen.
+  let lastFollow = 0;
+  function followMatchOnGameScreen() {
+    if (screen.width <= screen.height || location.pathname.startsWith("/matches")) return;
+    if (Date.now() - lastFollow < 20000) return;
+    const b = [...document.querySelectorAll("button")].find((e) => /currently in a match/i.test(e.textContent));
+    if (!b) return;
+    lastFollow = Date.now();
+    b.click();
+  }
+
   let observerTimer = null;
   const observer = new MutationObserver(() => {
     if (observerTimer) return;
     observerTimer = setTimeout(() => {
       observerTimer = null;
       attachButtonToHeader();
+      followMatchOnGameScreen();
     }, 150);
   });
 
